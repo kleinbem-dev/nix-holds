@@ -1,0 +1,61 @@
+name: release
+# Weekly: every held package whose cause builds again in nixos-unstable gets a
+# PR removing its hold (auto-merge); one held for more than 14 days alerts
+# via ntfy, since it misses the fixes of the newer nixpkgs.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 4 * * 1'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mint GitHub App installation token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: kleinbem/actions/nix-setup@7ec628296d5194e6e10031706387b992a10a1638 # v1.0.1
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+
+      - name: Build each hold's cause from nixos-unstable
+        run: .github/scripts/release-check.sh | tee "$RUNNER_TEMP/held.txt"
+
+      - name: Open a PR per hold that can go
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          awk '$1 == "release" {print $2}' "$RUNNER_TEMP/held.txt" | while read -r name; do
+            git checkout -- held-packages.json
+            link=$(jq -r --arg n "$name" '.[$n].link' held-packages.json)
+            jq --indent 2 --arg n "$name" 'del(.[$n])' held-packages.json > held-packages.json.new
+            mv held-packages.json.new held-packages.json
+            .github/scripts/open-signed-pr.sh "release/$name" "chore: release $name" \
+              "\`$name\` builds from nixos-unstable again, so it no longer needs its hold ($link). A consumer whose nixpkgs is older keeps failing its lock check until it catches up.
+
+          🤖 Opened by the release workflow." held-packages.json
+          done
+
+      - name: Alert for holds older than 14 days
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_ALERT_TOPIC }}
+        run: |
+          set -euo pipefail
+          long=$(awk '$1 == "held" && $3 > 14 {printf "%s (%s days) ", $2, $3}' "$RUNNER_TEMP/held.txt")
+          if [ -z "$long" ] || [ -z "$NTFY_TOPIC" ]; then
+            exit 0
+          fi
+          curl -fsS --max-time 15 \
+            -H "Title: packages held back from nixpkgs for more than 14 days" \
+            -H "Tags: warning" \
+            -d "Still held: $long- they miss the fixes of the fleet's nixpkgs. Their links are in kleinbem/nix-holds held-packages.json. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            "https://ntfy.kleinbem.dev/$NTFY_TOPIC"
