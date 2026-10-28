@@ -18,6 +18,16 @@
     "reason": "Needs python3Packages.posthog, marked broken in nixos-unstable since mcp 2.x; mac-mini's persona-runtime failed to evaluate, which held back the fleet's whole lock update.",
     "link": "https://github.com/NixOS/nixpkgs/pull/578265"
   },
+  "open-webui": {
+    "from": {
+      "rev": "02c087f3fe673c9e317f206a627cb6b910336dbe",
+      "narHash": "sha256-IoNisKcGbUjdd45qCqywGMCYmZ5EnkxezvLII0FWwNA="
+    },
+    "since": "2026-10-28",
+    "releaseWhen": "python3Packages.posthog",
+    "reason": "Needs python3Packages.chromadb, which needs posthog, marked broken in nixos-unstable since mcp 2.x; the container-factory's open-webui container failed to evaluate.",
+    "link": "https://github.com/NixOS/nixpkgs/pull/578265"
+  },
   "oterm": {
     "from": {
       "rev": "02c087f3fe673c9e317f206a627cb6b910336dbe",
