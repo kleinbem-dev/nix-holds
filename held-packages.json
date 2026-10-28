@@ -18,6 +18,15 @@
     "reason": "Needs python3Packages.posthog, marked broken in nixos-unstable since mcp 2.x; mac-mini's persona-runtime failed to evaluate, which held back the fleet's whole lock update.",
     "link": "https://github.com/NixOS/nixpkgs/pull/578265"
   },
+  "gimp3-mcp": {
+    "from": {
+      "rev": "02c087f3fe673c9e317f206a627cb6b910336dbe",
+      "narHash": "sha256-IoNisKcGbUjdd45qCqywGMCYmZ5EnkxezvLII0FWwNA="
+    },
+    "since": "2026-10-28",
+    "reason": "gimp3-mcp 0.2.0 (our nix-packages package) needs mcp 1.x: it imports mcp.server.fastmcp, which mcp 2 removed, and nixos-unstable ships mcp 2.2. nixos-nvme's toplevel failed to build. Ends with a gimp3-mcp release that supports mcp 2.",
+    "link": "https://github.com/tifyr/gimp3-mcp"
+  },
   "open-webui": {
     "from": {
       "rev": "02c087f3fe673c9e317f206a627cb6b910336dbe",
