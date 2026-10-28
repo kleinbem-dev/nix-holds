@@ -44,6 +44,10 @@ inputs.nix-holds = {
 3. **Alert:** a hold older than 14 days alerts via ntfy: the package misses
    the fixes of the newer nixpkgs.
 
+The `check` only evaluates the held packages: a consumer may adjust one
+(the open-webui container fixes its wrapper), so the consumer's own CI builds
+the real thing.
+
 Each pinned commit is another full package set at evaluation time; keep
 holds few and short.
 

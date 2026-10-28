@@ -31,7 +31,10 @@
 
       overlays.default = self.lib.mkOverlay { };
 
-      # Builds every held package this flake can provide on its own.
+      # Evaluates every held package this flake can provide on its own, from
+      # its pinned nixpkgs. Not a build: consumers may adjust a held package
+      # (the open-webui container fixes its wrapper), so their own CI builds
+      # the real thing.
       checks = forAllSystems (
         pkgs:
         let
@@ -45,11 +48,10 @@
           );
         in
         {
-          held-packages = pkgs.linkFarm "held-packages" (
-            map (name: {
-              inherit name;
-              path = held.${name};
-            }) names
+          held-packages = pkgs.writeText "held-packages" (
+            builtins.concatStringsSep "\n" (
+              map (name: "${name} ${builtins.unsafeDiscardOutputDependency held.${name}.drvPath}") names
+            )
           );
         }
       );
