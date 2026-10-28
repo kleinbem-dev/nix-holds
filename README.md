@@ -16,6 +16,7 @@ update stops until the package is fixed.
 | `since` | when the hold started |
 | `releaseWhen` | optional: the nixpkgs attribute whose repair ends the hold (default: the package itself), e.g. the broken dependency of one of our own packages |
 | `reason`, `link` | why, and the upstream issue or PR that fixes it |
+| `tests` | optional: the `nixosTests` to run with the hold (default: `nixosTests.<name>`, if nixpkgs has it; `[]` for none) |
 
 The overlay replaces each held package with the one from its `from` nixpkgs.
 Packages a consumer's package set doesn't have are left out.
@@ -44,9 +45,22 @@ inputs.nix-holds = {
 3. **Alert:** a hold older than 14 days alerts via ntfy: the package misses
    the fixes of the newer nixpkgs.
 
-The `check` only evaluates the held packages: a consumer may adjust one
-(the open-webui container fixes its wrapper), so the consumer's own CI builds
-the real thing.
+The `check` only evaluates the held packages and their NixOS tests: a
+consumer may adjust a held package (the open-webui container fixes its
+wrapper), so the consumer's own CI builds the real thing.
+
+A held package runs under the NixOS module of the consumer's current nixpkgs,
+and a module that expects a newer package only fails at runtime.
+`lib.nixosTests pkgs` gives the nixpkgs NixOS tests of the held packages
+(`tests`, see above) from a package set with the holds applied; run them in
+your CI with your own overlays on top, since that is the package you deploy:
+
+```nix
+checks.${system} = inputs.nix-holds.lib.nixosTests (import nixpkgs {
+  inherit system;
+  overlays = [ inputs.nix-holds.overlays.default ] ++ yourOverlays;
+});
+```
 
 Each pinned commit is another full package set at evaluation time; keep
 holds few and short.

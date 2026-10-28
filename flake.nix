@@ -31,10 +31,26 @@
 
       overlays.default = self.lib.mkOverlay { };
 
+      # The nixpkgs NixOS tests of the held packages, from a package set with
+      # the holds applied: an entry's `tests`, by default `nixosTests.<name>`
+      # if there is one. The NixOS module comes from the current nixpkgs, the
+      # package from its hold, and a module that expects a newer package only
+      # fails at runtime. Consumers run these with their own overlays on top,
+      # since that is the package they deploy.
+      lib.nixosTests =
+        pkgs:
+        let
+          inherit (nixpkgs) lib;
+          entries = lib.importJSON ./held-packages.json;
+          names = builtins.filter (name: pkgs ? ${name}) (builtins.attrNames entries);
+          testsOf = name: entries.${name}.tests or (lib.optional (pkgs.nixosTests ? ${name}) name);
+        in
+        lib.genAttrs (lib.unique (lib.concatMap testsOf names)) (test: pkgs.nixosTests.${test});
+
       # Evaluates every held package this flake can provide on its own, from
-      # its pinned nixpkgs. Not a build: consumers may adjust a held package
-      # (the open-webui container fixes its wrapper), so their own CI builds
-      # the real thing.
+      # its pinned nixpkgs, and its NixOS tests. Not a build: consumers may
+      # adjust a held package (the open-webui container fixes its wrapper),
+      # so their own CI builds the real thing.
       checks = forAllSystems (
         pkgs:
         let
@@ -46,12 +62,15 @@
           names = builtins.filter (name: pkgs ? ${name}) (
             builtins.attrNames (nixpkgs.lib.importJSON ./held-packages.json)
           );
+          drvs =
+            map (name: "${name} ${held.${name}.drvPath}") names
+            ++ nixpkgs.lib.mapAttrsToList (test: drv: "nixosTests.${test} ${drv.drvPath}") (
+              self.lib.nixosTests held
+            );
         in
         {
           held-packages = pkgs.writeText "held-packages" (
-            builtins.concatStringsSep "\n" (
-              map (name: "${name} ${builtins.unsafeDiscardOutputDependency held.${name}.drvPath}") names
-            )
+            builtins.concatStringsSep "\n" (map builtins.unsafeDiscardOutputDependency drvs)
           );
         }
       );
