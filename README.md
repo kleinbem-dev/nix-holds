@@ -31,7 +31,7 @@ Keep your holds in your own repo, in a `held-packages.json` as above:
 
 ```nix
 inputs.nix-holds = {
-  url = "github:kleinbem/nix-holds";
+  url = "github:kleinbem-dev/nix-holds";
   inputs.nixpkgs.follows = "nixpkgs";
   inputs.nixpkgs-stable.follows = "nixpkgs-stable";
 };
@@ -66,12 +66,12 @@ yourself.
 ## The CLI
 
 ```sh
-nix run github:kleinbem/nix-holds -- add open-webui \
+nix run github:kleinbem-dev/nix-holds -- add open-webui \
   --reason "chromadb needs posthog, broken since mcp 2" \
   --link https://github.com/NixOS/nixpkgs/pull/578265 \
   --release-when python3Packages.posthog
-nix run github:kleinbem/nix-holds -- list
-nix run github:kleinbem/nix-holds -- check   # which holds can go
+nix run github:kleinbem-dev/nix-holds -- list
+nix run github:kleinbem-dev/nix-holds -- check   # which holds can go
 ```
 
 `add` holds a package on the nixpkgs your `flake.lock` had before its last
@@ -83,7 +83,7 @@ hold, and `check` runs the release checks locally. `--file`, `--lock` and
 ## Lifecycle
 
 1. **Hold:** `nix-holds add` in a PR, with the reason and the upstream link.
-2. **Release:** the release action (`uses: kleinbem/nix-holds@<sha>`, after
+2. **Release:** the release action (`uses: kleinbem-dev/nix-holds@<sha>`, after
    installing Nix) builds each release check from nixos-unstable and opens a
    PR removing the hold once it builds. Its `stale` output lists the holds
    older than 14 days, for your own alert. A consumer whose nixpkgs is older
