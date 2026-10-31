@@ -25,6 +25,7 @@ let
   byName = src: name: "${src}/pkgs/by-name/${lib.substring 0 2 name}/${name}/package.nix";
 
   allAttrs = lib.concatMap (entry: entry.attrs) (lib.attrValues entries);
+  allModules = lib.concatMap (entry: lib.attrNames (entry.modules or { })) (lib.attrValues entries);
 
   # One entry's attributes, from pkgs. Each entry gets its own scope, so
   # packages of the same PR find each other before falling back to nixpkgs.
@@ -44,6 +45,7 @@ let
   packages = pkgs: lib.concatMapAttrs (_: packagesOf pkgs) entries;
 in
 assert lib.assertMsg (lib.allUnique allAttrs) "nix-holds prs: an attribute is in two entries";
+assert lib.assertMsg (lib.allUnique allModules) "nix-holds prs: a module name is in two entries";
 {
   inherit entries packages;
 

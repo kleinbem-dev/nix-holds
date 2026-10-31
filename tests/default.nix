@@ -150,6 +150,25 @@ let
         maintainers = [ ];
       };
     };
+    testPrDuplicateModuleRefused = {
+      expr =
+        (builtins.tryEval
+          (mkPrs {
+            fetch = _: ./fake-pr;
+            prs = {
+              a = {
+                attrs = [ ];
+                modules.fake = "nixos/fake.nix";
+              };
+              b = {
+                attrs = [ ];
+                modules.fake = "nixos/fake-attrs.nix";
+              };
+            };
+          }).nixosModules
+        ).success;
+      expected = false;
+    };
     testPrModuleArgs = {
       expr = lib.functionArgs prs.nixosModules.fake;
       expected = {
