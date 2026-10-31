@@ -10,9 +10,13 @@ set -uo pipefail
 flake="$1" holds="$2" channel="$3"
 system=$(nix eval --raw --impure --expr builtins.currentSystem)
 today=$(date -u +%s)
-checks=$(nix eval --json "$flake#releaseChecks.$system" --apply builtins.attrNames --override-input nixpkgs "$channel")
+checks=$(nix eval --json "$flake#releaseChecks.$system" --apply builtins.attrNames --override-input nixpkgs "$channel") || {
+  echo "cannot evaluate $flake#releaseChecks.$system" >&2
+  exit 1
+}
 
-for name in $(jq -r 'keys[]' "$holds"); do
+mapfile -t names < <(jq -r 'keys[]' "$holds")
+for name in "${names[@]}"; do
   if ! jq -e --arg n "$name" 'index($n)' <<<"$checks" >/dev/null; then
     echo "skipping $name: $flake has no release check for it on $system" >&2
     continue

@@ -30,11 +30,13 @@ runs:
       id: check
       shell: bash
       env:
+        FLAKE: ${{ inputs.flake }}
         HOLDS: ${{ inputs.holds-file }}
+        CHANNEL: ${{ inputs.channel }}
         STALE_DAYS: ${{ inputs.stale-days }}
       run: |
         set -euo pipefail
-        "$GITHUB_ACTION_PATH/scripts/release-check.sh" "${{ inputs.flake }}" "$HOLDS" "${{ inputs.channel }}" \
+        "$GITHUB_ACTION_PATH/scripts/release-check.sh" "$FLAKE" "$HOLDS" "$CHANNEL" \
           | tee "$RUNNER_TEMP/held.txt"
         stale=$(awk -v d="$STALE_DAYS" '$1 == "held" && $3 > d {printf "%s (%s days) ", $2, $3}' "$RUNNER_TEMP/held.txt")
         echo "stale=$stale" >> "$GITHUB_OUTPUT"
