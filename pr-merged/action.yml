@@ -1,0 +1,62 @@
+name: nix-holds pr merged
+description: >-
+  Opens a PR removing every entry of the PRs file whose packages the flake's
+  nixpkgs has in the same or a newer version, so nixpkgs' packages take
+  over. An entry with NixOS modules gets a draft: switch to nixpkgs' module
+  first. Run it after installing Nix, from a checkout of the repository with
+  the PRs file.
+inputs:
+  token:
+    description: Token that pushes the branch and opens the PR (contents + pull-requests write)
+    required: true
+  flake:
+    description: Flake with the PR packages (nixpkgsPrs.<system> from mkPrs)
+    default: .
+  prs-file:
+    description: The PRs file the flake's mkPrs reads, relative to the repository root (edited for the PRs)
+    default: nixpkgs-prs.json
+runs:
+  using: composite
+  steps:
+    - name: Find the merged entries
+      shell: bash
+      env:
+        FLAKE: ${{ inputs.flake }}
+        PRS: ${{ inputs.prs-file }}
+      run: |
+        set -euo pipefail
+        "$GITHUB_ACTION_PATH/../scripts/prs.sh" merged --file "$PRS" --flake "$FLAKE" \
+          | tee "$RUNNER_TEMP/prs.txt"
+
+    - name: Open a PR per merged entry
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        PRS: ${{ inputs.prs-file }}
+      run: |
+        set -euo pipefail
+        awk '$1 == "merged" {print $2}' "$RUNNER_TEMP/prs.txt" | while read -r name; do
+          git checkout -- "$PRS"
+          if ! jq -e --arg n "$name" 'has($n)' "$PRS" >/dev/null; then
+            echo "::warning::$name is merged, but $PRS has no entry for it: is it the file the flake's mkPrs reads?"
+            continue
+          fi
+          pr=$(jq -r --arg n "$name" '.[$n].pr' "$PRS")
+          modules=$(jq -r --arg n "$name" '.[$n].modules // {} | keys | join(", ")' "$PRS")
+          jq --indent 2 --arg n "$name" 'del(.[$n])' "$PRS" > "$PRS.new"
+          mv "$PRS.new" "$PRS"
+          body="nixpkgs has \`$name\`'s packages in the same or a newer version (NixOS/nixpkgs#$pr), so this uses nixpkgs' packages instead."
+          if [ -n "$modules" ]; then
+            "$GITHUB_ACTION_PATH/../scripts/open-signed-pr.sh" "nixpkgs-merged/$name" "chore($name): use nixpkgs' packages" \
+              "$body
+
+        Draft: the NixOS module(s) $modules come from this entry too. Switch their users to nixpkgs' own module first, then mark this ready.
+
+        🤖 Opened by the nix-holds pr merged action." --draft "$PRS"
+          else
+            "$GITHUB_ACTION_PATH/../scripts/open-signed-pr.sh" "nixpkgs-merged/$name" "chore($name): use nixpkgs' packages" \
+              "$body
+
+        🤖 Opened by the nix-holds pr merged action." "$PRS"
+          fi
+        done

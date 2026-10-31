@@ -7,6 +7,10 @@ works, and everything else moves on. Without this, the whole lock update
 stops until the package is fixed. Each hold says why and where the fix is,
 and goes away once the package builds from nixos-unstable again.
 
+It also works the other way round: [packages from open nixpkgs
+PRs](#packages-from-open-nixpkgs-prs) run before the PR lands, and go once
+nixpkgs has them.
+
 An example of it in use:
 [kleinbem/nix-holds-fleet](https://github.com/kleinbem/nix-holds-fleet).
 
@@ -117,7 +121,70 @@ Don't hold packages the standard environment is built from (on darwin, jq
 is one): the darwin stdenv checks that its bootstrap tools come from one
 compiler, and evaluation fails.
 
+## Packages from open nixpkgs PRs
+
+When a package you need only exists on a nixpkgs PR (often your own), run
+the PR's own package files instead of copying them. The package is built
+against your nixpkgs from the PR pinned at one commit, so what runs is
+exactly what the PR contains. Once your nixpkgs has the package in the same
+or a newer version, the entry goes and nixpkgs' package takes over.
+
+`nixpkgs-prs.json` lists each entry:
+
+| Field | Meaning |
+|---|---|
+| `pr` | the nixpkgs PR number |
+| `owner`, `repo` | where the PR's branch is (your fork) |
+| `rev`, `narHash` | the pinned commit (`nix-holds pr pin`) |
+| `attrs` | the packages to take from the PR (from `pkgs/by-name`) |
+| `scope` | optional: packages of the PR that `attrs` need but that stay unexported |
+| `modules` | optional: NixOS modules of the PR, `{ name = path in the PR; }` |
+
+```nix
+# outputs
+let
+  prs = inputs.nix-holds.lib.mkPrs { prs = ./nixpkgs-prs.json; };
+in
+{
+  overlays.default = prs.overlay;
+  nixosModules = prs.nixosModules;  # e.g. nixosModules.mesh-llm
+  # For the CLI and the actions, from a package set without the overlay.
+  nixpkgsPrs = forAllSystems (pkgs: prs.checks pkgs);
+}
+```
+
+The packages of one entry see each other first, then your nixpkgs. The
+modules come without their `meta.doc`: the NixOS manual rejects chapters
+nixpkgs doesn't know, and the module's options are documented either way.
+`mkPrs` doesn't need flakes: `import "${nix-holds}/prs.nix" { inherit lib;
+prs = ./nixpkgs-prs.json; }` gives the same.
+
+```sh
+nix run github:kleinbem-dev/nix-holds -- pr add mesh-llm --pr 571722 \
+  --repo you/nixpkgs --attrs mesh-llm,skippy \
+  --module mesh-llm=nixos/modules/services/misc/mesh-llm.nix
+nix run github:kleinbem-dev/nix-holds -- pr pin mesh-llm <full sha>
+nix run github:kleinbem-dev/nix-holds -- pr list
+nix run github:kleinbem-dev/nix-holds -- pr merged   # which entries can go
+```
+
+Lifecycle:
+
+1. **Add** an entry with `nix-holds pr add`.
+2. **Pin** a commit whose packages build (nixpkgs-review), by hand or with
+   the pin action, which evaluates the packages and opens the PR:
+   `uses: kleinbem-dev/nix-holds/pr-pin@<sha>` with `token`, `name` and
+   `rev`. Lock updates never move a pin, so nothing new runs unless you
+   pinned it.
+3. **Remove:** `uses: kleinbem-dev/nix-holds/pr-merged@<sha>` with `token`,
+   on a schedule, opens a PR removing each entry your flake's nixpkgs has
+   caught up with. An entry with modules gets a draft: switch to nixpkgs'
+   own module first, then mark it ready.
+
+Both actions run after installing Nix, from a checkout of your repository.
+
 ## Not here
 
 Fixes that change a package (a patch, a skipped test) stay in the consumer
-that needs them. This repo only chooses which nixpkgs a package comes from.
+that needs them. This repo only chooses which nixpkgs a package comes from:
+an older one, or a PR.

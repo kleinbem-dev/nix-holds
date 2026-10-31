@@ -1,5 +1,5 @@
 {
-  description = "Hold packages back from nixos-unstable while they're broken there";
+  description = "Hold packages back from nixos-unstable while they're broken there, and run packages from open nixpkgs PRs until they land";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -78,8 +78,12 @@
             );
         };
 
-      # The CLI: add, remove, list and check holds. Nix itself comes from the
-      # user's PATH.
+      # Packages from open nixpkgs PRs of one consumer (see prs.nix).
+      #   prs: its nixpkgs-prs.json (a path) or the same as an attrset
+      lib.mkPrs = { prs }: import ./prs.nix { inherit lib prs; };
+
+      # The CLI: add, remove, list and check holds, and the same for PR
+      # packages (`nix-holds pr`). Nix itself comes from the user's PATH.
       packages = forAllSystems (pkgs: {
         default = self.packages.${pkgs.stdenv.hostPlatform.system}.nix-holds;
         nix-holds =
@@ -92,6 +96,14 @@
               ];
               text = builtins.readFile ./scripts/release-check.sh;
             };
+            prs = pkgs.writeShellApplication {
+              name = "nix-holds-pr";
+              runtimeInputs = [
+                pkgs.coreutils
+                pkgs.jq
+              ];
+              text = builtins.readFile ./scripts/prs.sh;
+            };
           in
           pkgs.writeShellApplication {
             name = "nix-holds";
@@ -100,18 +112,19 @@
               pkgs.git
               pkgs.jq
             ];
-            text = builtins.replaceStrings [ "@releaseCheck@" ] [ (lib.getExe releaseCheck) ] (
-              builtins.readFile ./scripts/nix-holds.sh
-            );
+            text =
+              builtins.replaceStrings [ "@releaseCheck@" "@prs@" ] [ (lib.getExe releaseCheck) (lib.getExe prs) ]
+                (builtins.readFile ./scripts/nix-holds.sh);
           };
       });
 
-      # Tests of mkHolds and the CLI.
+      # Tests of mkHolds, mkPrs and the CLI.
       checks = forAllSystems (
         pkgs:
         import ./tests {
           inherit pkgs nixpkgs nixpkgs-stable;
           inherit (self.lib) mkHolds;
+          mkPrs = args: import ./prs.nix ({ inherit lib; } // args);
           inherit (self.packages.${pkgs.stdenv.hostPlatform.system}) nix-holds;
         }
       );

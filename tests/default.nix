@@ -1,10 +1,12 @@
-# Tests of mkHolds itself, on a small list of holds from nixpkgs-stable (no
-# extra downloads). Evaluation only: a failing test fails `nix flake check`.
+# Tests of mkHolds and mkPrs, on a small list of holds from nixpkgs-stable
+# and PRs from a local tree (no extra downloads). Evaluation only: a failing
+# test fails `nix flake check`.
 {
   pkgs,
   nixpkgs,
   nixpkgs-stable,
   mkHolds,
+  mkPrs,
   nix-holds,
 }:
 let
@@ -39,6 +41,30 @@ let
         holds.overlay
       ];
     };
+  # Two PRs from a local tree: fake-a needs the unexported fake-b of its PR,
+  # and an older hello than nixpkgs' with a NixOS module.
+  prs = mkPrs {
+    fetch = _: ./fake-pr;
+    prs = {
+      fake = {
+        pr = 1;
+        attrs = [ "fake-a" ];
+        scope = [ "fake-b" ];
+      };
+      old-hello = {
+        pr = 2;
+        attrs = [ "hello" ];
+        modules.fake = "nixos/fake.nix";
+      };
+    };
+  };
+  withPrs = import nixpkgs {
+    inherit system;
+    overlays = [ prs.overlay ];
+  };
+  prChecks = prs.checks pkgs;
+  fakeModule = prs.nixosModules.fake { inherit lib; };
+
   held = consumer { };
   heldUnfree = consumer { allowUnfree = true; };
 
@@ -84,6 +110,42 @@ let
         "hello"
         "unrar"
       ];
+    };
+
+    testPrPackageInOverlay = {
+      expr = withPrs.fake-a.text;
+      expected = "${withPrs.writeText "fake-b" "b"}";
+    };
+    testPrScopeNotExported = {
+      expr = withPrs ? fake-b;
+      expected = false;
+    };
+    testPrReplacesNixpkgs = {
+      expr = withPrs.hello.version;
+      expected = "0.1";
+    };
+    testPrMerged = {
+      expr = lib.mapAttrs (_: c: c.merged) prChecks;
+      expected = {
+        fake = false;
+        old-hello = true;
+      };
+    };
+    testPrCheckCarriesEntry = {
+      expr = prChecks.fake.nixPrs.pr;
+      expected = 1;
+    };
+    testPrModuleWithoutDoc = {
+      expr = fakeModule.meta;
+      expected = {
+        maintainers = [ ];
+      };
+    };
+    testPrModuleArgs = {
+      expr = lib.functionArgs prs.nixosModules.fake;
+      expected = {
+        lib = false;
+      };
     };
   };
 in
@@ -144,9 +206,37 @@ in
         touch $out
       '';
 
+  # The PR CLI, without the commands that fetch (pin) or evaluate a flake.
+  pr-cli =
+    pkgs.runCommand "nix-holds-pr-cli-tests"
+      {
+        nativeBuildInputs = [
+          nix-holds
+          pkgs.jq
+        ];
+      }
+      ''
+        set -euo pipefail
+        nix-holds pr add mesh --pr 571722 --repo someone/nixpkgs --attrs mesh-llm,skippy \
+          --scope skippy-runtime --module mesh-llm=nixos/modules/services/misc/mesh-llm.nix
+        test "$(jq -c .mesh nixpkgs-prs.json)" = '{"pr":571722,"owner":"someone","repo":"nixpkgs","rev":"","narHash":"","attrs":["mesh-llm","skippy"],"scope":["skippy-runtime"],"modules":{"mesh-llm":"nixos/modules/services/misc/mesh-llm.nix"}}'
+        nix-holds pr add berd --pr 2 --repo someone/nixpkgs --attrs berd
+        test "$(jq -r 'keys | join(",")' nixpkgs-prs.json)" = berd,mesh
+        test "$(jq -c .berd nixpkgs-prs.json)" = '{"pr":2,"owner":"someone","repo":"nixpkgs","rev":"","narHash":"","attrs":["berd"]}'
+        nix-holds pr list | grep -q '^mesh  *#571722  *not pinned  *mesh-llm,skippy$'
+        if nix-holds pr pin berd abc 2>/dev/null; then echo "pin with a short sha should fail" >&2; exit 1; fi
+        if nix-holds pr pin nope 0000000000000000000000000000000000000000 2>/dev/null; then echo "pin of a missing entry should fail" >&2; exit 1; fi
+        if nix-holds pr add x --pr 3 --attrs x 2>/dev/null; then echo "add without --repo should fail" >&2; exit 1; fi
+        if nix-holds pr add x --pr 3 --repo a/b --attrs x --module bad 2>/dev/null; then echo "a module without a path should fail" >&2; exit 1; fi
+        nix-holds pr remove berd
+        test "$(jq -r 'keys | join(",")' nixpkgs-prs.json)" = mesh
+        if nix-holds pr remove berd 2>/dev/null; then echo "removing a missing entry should fail" >&2; exit 1; fi
+        touch $out
+      '';
+
   mk-holds =
     if failed == [ ] then
       pkgs.writeText "mk-holds-tests" "ok"
     else
-      throw "mkHolds tests failed: ${builtins.toJSON failed}";
+      throw "mkHolds/mkPrs tests failed: ${builtins.toJSON failed}";
 }

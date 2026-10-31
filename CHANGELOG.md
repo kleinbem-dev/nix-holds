@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Packages from open nixpkgs PRs: `lib.mkPrs { prs }` (or plain
+  `import ./prs.nix`) builds the packages and NixOS modules of the PRs in a
+  `nixpkgs-prs.json` against your nixpkgs (`overlay`, `packages`,
+  `nixosModules`, `checks`).
+- CLI: `nix-holds pr add`, `pin`, `remove`, `list`, `eval`, `merged`.
+- Actions: `kleinbem-dev/nix-holds/pr-pin` pins an entry and opens the PR;
+  `kleinbem-dev/nix-holds/pr-merged` opens a PR removing each entry nixpkgs
+  has caught up with.
+
 ## 0.1.0 (2026-10-31)
 
 First version for use outside the kleinbem fleet.

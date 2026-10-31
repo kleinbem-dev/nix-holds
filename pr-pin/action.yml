@@ -1,0 +1,50 @@
+name: nix-holds pr pin
+description: >-
+  Pins an entry of the PRs file (packages from an open nixpkgs PR) to a
+  commit, evaluates its packages and opens a PR with the pin. Run it after
+  installing Nix, from a checkout of the repository with the PRs file.
+inputs:
+  token:
+    description: Token that pushes the branch and opens the PR (contents + pull-requests write)
+    required: true
+  name:
+    description: The entry to pin
+    required: true
+  rev:
+    description: Full commit SHA of the PR's branch to pin
+    required: true
+  flake:
+    description: Flake with the PR packages (nixpkgsPrs.<system>.<name> from mkPrs)
+    default: .
+  prs-file:
+    description: The PRs file the flake's mkPrs reads, relative to the repository root
+    default: nixpkgs-prs.json
+runs:
+  using: composite
+  steps:
+    - name: Pin and evaluate
+      shell: bash
+      env:
+        NAME: ${{ inputs.name }}
+        REV: ${{ inputs.rev }}
+        FLAKE: ${{ inputs.flake }}
+        PRS: ${{ inputs.prs-file }}
+      run: |
+        set -euo pipefail
+        "$GITHUB_ACTION_PATH/../scripts/prs.sh" pin "$NAME" "$REV" --file "$PRS"
+        "$GITHUB_ACTION_PATH/../scripts/prs.sh" eval "$NAME" --file "$PRS" --flake "$FLAKE"
+
+    - name: Open the PR
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        NAME: ${{ inputs.name }}
+        REV: ${{ inputs.rev }}
+        PRS: ${{ inputs.prs-file }}
+      run: |
+        set -euo pipefail
+        pr=$(jq -r --arg n "$NAME" '.[$n].pr' "$PRS")
+        "$GITHUB_ACTION_PATH/../scripts/open-signed-pr.sh" "pin/$NAME" "chore($NAME): pin to ${REV:0:12}" \
+          "Pins \`$NAME\` to $REV, the state of NixOS/nixpkgs#$pr to run.
+
+        🤖 Opened by the nix-holds pr pin action." "$PRS"
