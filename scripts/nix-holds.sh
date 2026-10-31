@@ -15,8 +15,8 @@ Usage: nix-holds <command> [options]
   list
       Show every hold, where it comes from and how old it is.
   check [--flake REF] [--channel REF]
-      Build what ends each hold (the flake's releaseChecks) from the newest
-      nixpkgs and say which holds can go.
+      Build what ends each hold (the flake's releaseChecks, with the holds
+      its mkHolds reads) from the newest nixpkgs; say which holds can go.
 
 Options for every command:
   --file PATH    the holds file (default: held-packages.json)
@@ -33,18 +33,22 @@ die() {
 file=held-packages.json lock=flake.lock input=nixpkgs
 from=previous reason="" link="" release_when="" tests="" flake=. channel=github:NixOS/nixpkgs/nixos-unstable
 args=()
+# The value of option $1, or an error when it has none.
+need() {
+  (($# >= 2)) || die "$1 needs a value"
+}
 while (($#)); do
   case "$1" in
-    --file) file="$2"; shift 2 ;;
-    --lock) lock="$2"; shift 2 ;;
-    --input) input="$2"; shift 2 ;;
-    --from) from="$2"; shift 2 ;;
-    --reason) reason="$2"; shift 2 ;;
-    --link) link="$2"; shift 2 ;;
-    --release-when) release_when="$2"; shift 2 ;;
-    --tests) tests="$2"; shift 2 ;;
-    --flake) flake="$2"; shift 2 ;;
-    --channel) channel="$2"; shift 2 ;;
+    --file) need "$@"; file="$2"; shift 2 ;;
+    --lock) need "$@"; lock="$2"; shift 2 ;;
+    --input) need "$@"; input="$2"; shift 2 ;;
+    --from) need "$@"; from="$2"; shift 2 ;;
+    --reason) need "$@"; reason="$2"; shift 2 ;;
+    --link) need "$@"; link="$2"; shift 2 ;;
+    --release-when) need "$@"; release_when="$2"; shift 2 ;;
+    --tests) need "$@"; tests="$2"; shift 2 ;;
+    --flake) need "$@"; flake="$2"; shift 2 ;;
+    --channel) need "$@"; channel="$2"; shift 2 ;;
     -h | --help) usage; exit 0 ;;
     -*) die "unknown option $1 (see --help)" ;;
     *) args+=("$1"); shift ;;
@@ -54,13 +58,20 @@ done
 command="${args[0]}"
 
 holds() {
-  if [[ -e $file ]]; then cat "$file"; else echo '{}'; fi
+  if [[ -e $file ]]; then
+    jq . "$file" || die "$file is not valid JSON"
+  else
+    echo '{}'
+  fi
 }
 
 # Writes the holds from stdin, top-level keys sorted, entries as they are.
+# Empty input (a failed jq before it) leaves the file as it is.
 write_holds() {
-  jq --indent 2 'to_entries | sort_by(.key) | from_entries' >"$file.new"
-  mv "$file.new" "$file"
+  local new
+  new=$(jq --indent 2 'to_entries | sort_by(.key) | from_entries') && [[ -n $new ]] \
+    || die "cannot update $file (is it valid JSON?)"
+  printf '%s\n' "$new" >"$file"
 }
 
 # Prints {rev, narHash} of $input in the lock JSON on stdin.
@@ -128,7 +139,7 @@ case "$command" in
       done
     ;;
   check)
-    @releaseCheck@ "$flake" "$file" "$channel"
+    @releaseCheck@ "$flake" "$channel"
     ;;
   *) die "unknown command $command (see --help)" ;;
 esac

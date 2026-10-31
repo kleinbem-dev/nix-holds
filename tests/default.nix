@@ -69,6 +69,14 @@ let
       expr = (holds.releaseChecks pkgs).figlet.outPath;
       expected = pkgs.python3Packages.jq.outPath;
     };
+    # The release tools read each hold from its check.
+    testReleaseCheckCarriesEntry = {
+      expr = (holds.releaseChecks pkgs).figlet.nixHolds;
+      expected = {
+        from = "stable";
+        releaseWhen = "python3Packages.jq";
+      };
+    };
     testReleaseChecksSkipMissing = {
       expr = builtins.attrNames (holds.releaseChecks pkgs);
       expected = [
@@ -122,6 +130,14 @@ in
         test "$(jq -r 'keys | join(",")' held-packages.json)" = bar,baz
         if nix-holds remove foo 2>/dev/null; then echo "removing a missing hold should fail" >&2; exit 1; fi
         if nix-holds add qux 2>/dev/null; then echo "add without --reason should fail" >&2; exit 1; fi
+        if nix-holds add qux --reason 2>/dev/null; then echo "an option without a value should fail" >&2; exit 1; fi
+
+        # An invalid holds file stays as it is.
+        echo '{ broken' > bad.json
+        if nix-holds add qux --reason r --from stable --file bad.json 2>/dev/null; then echo "add to an invalid file should fail" >&2; exit 1; fi
+        test "$(cat bad.json)" = '{ broken'
+        if nix-holds remove bar --file bad.json 2>/dev/null; then echo "remove from an invalid file should fail" >&2; exit 1; fi
+        test "$(cat bad.json)" = '{ broken'
         touch $out
       '';
 

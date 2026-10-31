@@ -64,11 +64,17 @@
           # What ends each hold: its `releaseWhen` (default: the package
           # itself), from a package set *without* the holds but with the
           # consumer's own overlays. A hold can go once its release check
-          # builds from the newest nixpkgs.
+          # builds from the newest nixpkgs. Each check carries its hold's
+          # entry as `nixHolds`, so the release tools read the holds this
+          # flake actually uses.
           releaseChecks =
             pkgs:
             lib.genAttrs (heldIn pkgs) (
-              name: lib.getAttrFromPath (lib.splitString "." (entries.${name}.releaseWhen or name)) pkgs
+              name:
+              lib.getAttrFromPath (lib.splitString "." (entries.${name}.releaseWhen or name)) pkgs
+              // {
+                nixHolds = entries.${name};
+              }
             );
         };
 
