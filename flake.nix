@@ -1,5 +1,5 @@
 {
-  description = "Packages the kleinbem fleet holds back from nixos-unstable";
+  description = "Hold packages back from nixos-unstable while they're broken there";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -8,44 +8,87 @@
   };
 
   outputs =
-    {
+    inputs@{
       self,
       nixpkgs,
       nixpkgs-stable,
     }:
     let
+      inherit (nixpkgs) lib;
       systems = [
         "x86_64-linux"
         "aarch64-linux"
       ];
-      forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
+      forAllSystems = f: lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
     in
     {
-      # extraOverlays: the consumer's own package overlays, so its packages
-      # can be held too (nix-config passes nix-packages' overlay).
+      # The holds of one consumer.
+      #   holds: its held-packages.json (a path) or the same as an attrset
+      #   nixpkgs-stable: the nixpkgs behind `from = "stable"`
+      #   extraOverlays: its own package overlays, so its packages can be
+      #     held too
+      #   config: its nixpkgs config for the held package sets; by default
+      #     the usual settings (allowUnfree, insecure packages, CUDA, ...)
+      #     are taken from the package set the overlay is applied to
+      lib.mkHolds =
+        {
+          holds,
+          nixpkgs-stable ? inputs.nixpkgs-stable,
+          extraOverlays ? [ ],
+          config ? null,
+        }:
+        let
+          entries = if builtins.isAttrs holds then holds else lib.importJSON holds;
+          heldIn = pkgs: builtins.filter (name: pkgs ? ${name}) (builtins.attrNames entries);
+        in
+        {
+          overlay = import ./overlay.nix {
+            inherit nixpkgs-stable extraOverlays config;
+            holds = entries;
+          };
+
+          # The nixpkgs NixOS tests of the held packages, from a package set
+          # with the holds applied: an entry's `tests`, by default
+          # `nixosTests.<name>` if there is one. The NixOS module comes from
+          # the current nixpkgs, the package from its hold, and a module that
+          # expects a newer package only fails at runtime. Run these with
+          # your own overlays on top, since that is the package you deploy.
+          nixosTests =
+            pkgs:
+            let
+              testsOf = name: entries.${name}.tests or (lib.optional (pkgs.nixosTests ? ${name}) name);
+            in
+            lib.genAttrs (lib.unique (lib.concatMap testsOf (heldIn pkgs))) (test: pkgs.nixosTests.${test});
+
+          # What ends each hold: its `releaseWhen` (default: the package
+          # itself), from a package set *without* the holds but with the
+          # consumer's own overlays. A hold can go once its release check
+          # builds from the newest nixpkgs.
+          releaseChecks =
+            pkgs:
+            lib.genAttrs (heldIn pkgs) (
+              name: lib.getAttrFromPath (lib.splitString "." (entries.${name}.releaseWhen or name)) pkgs
+            );
+        };
+
+      # The holds of the kleinbem fleet, until they move to their own repo.
       lib.mkOverlay =
         {
           extraOverlays ? [ ],
         }:
-        import ./overlay.nix { inherit nixpkgs-stable extraOverlays; };
+        (self.lib.mkHolds {
+          holds = ./held-packages.json;
+          inherit extraOverlays;
+        }).overlay;
 
       overlays.default = self.lib.mkOverlay { };
 
-      # The nixpkgs NixOS tests of the held packages, from a package set with
-      # the holds applied: an entry's `tests`, by default `nixosTests.<name>`
-      # if there is one. The NixOS module comes from the current nixpkgs, the
-      # package from its hold, and a module that expects a newer package only
-      # fails at runtime. Consumers run these with their own overlays on top,
-      # since that is the package they deploy.
-      lib.nixosTests =
-        pkgs:
-        let
-          inherit (nixpkgs) lib;
-          entries = lib.importJSON ./held-packages.json;
-          names = builtins.filter (name: pkgs ? ${name}) (builtins.attrNames entries);
-          testsOf = name: entries.${name}.tests or (lib.optional (pkgs.nixosTests ? ${name}) name);
-        in
-        lib.genAttrs (lib.unique (lib.concatMap testsOf names)) (test: pkgs.nixosTests.${test});
+      lib.nixosTests = (self.lib.mkHolds { holds = ./held-packages.json; }).nixosTests;
+
+      # For the release action: what ends each of the fleet's holds.
+      releaseChecks = forAllSystems (
+        pkgs: (self.lib.mkHolds { holds = ./held-packages.json; }).releaseChecks pkgs
+      );
 
       # Evaluates every held package this flake can provide on its own, from
       # its pinned nixpkgs, and its NixOS tests. Not a build: consumers may
@@ -60,18 +103,20 @@
             overlays = [ self.overlays.default ];
           };
           names = builtins.filter (name: pkgs ? ${name}) (
-            builtins.attrNames (nixpkgs.lib.importJSON ./held-packages.json)
+            builtins.attrNames (lib.importJSON ./held-packages.json)
           );
           drvs =
             map (name: "${name} ${held.${name}.drvPath}") names
-            ++ nixpkgs.lib.mapAttrsToList (test: drv: "nixosTests.${test} ${drv.drvPath}") (
-              self.lib.nixosTests held
-            );
+            ++ lib.mapAttrsToList (test: drv: "nixosTests.${test} ${drv.drvPath}") (self.lib.nixosTests held);
         in
         {
           held-packages = pkgs.writeText "held-packages" (
             builtins.concatStringsSep "\n" (map builtins.unsafeDiscardOutputDependency drvs)
           );
+        }
+        // import ./tests {
+          inherit pkgs nixpkgs nixpkgs-stable;
+          inherit (self.lib) mkHolds;
         }
       );
 

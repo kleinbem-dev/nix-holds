@@ -1,0 +1,60 @@
+name: nix-holds release
+description: >-
+  Builds what ends each hold from the newest nixpkgs and opens a PR removing
+  every hold that builds again. Run it after installing Nix, from a checkout
+  of the repository with the holds file.
+inputs:
+  token:
+    description: Token that pushes the branch and opens the PR (contents + pull-requests write)
+    required: true
+  flake:
+    description: Flake with the release checks (releaseChecks.<system>.<name> from mkHolds)
+    default: .
+  holds-file:
+    description: The holds file, relative to the repository root
+    default: held-packages.json
+  channel:
+    description: The nixpkgs the release checks build from (overrides the flake's nixpkgs input)
+    default: github:NixOS/nixpkgs/nixos-unstable
+  stale-days:
+    description: A hold older than this is listed in the `stale` output
+    default: "14"
+outputs:
+  stale:
+    description: Holds older than stale-days that can't go yet, as "name (N days)" separated by spaces; empty if none
+    value: ${{ steps.check.outputs.stale }}
+runs:
+  using: composite
+  steps:
+    - name: Build what ends each hold
+      id: check
+      shell: bash
+      env:
+        FLAKE: ${{ inputs.flake }}
+        HOLDS: ${{ inputs.holds-file }}
+        CHANNEL: ${{ inputs.channel }}
+        STALE_DAYS: ${{ inputs.stale-days }}
+      run: |
+        set -euo pipefail
+        "$GITHUB_ACTION_PATH/scripts/release-check.sh" "$FLAKE" "$HOLDS" "$CHANNEL" \
+          | tee "$RUNNER_TEMP/held.txt"
+        stale=$(awk -v d="$STALE_DAYS" '$1 == "held" && $3 > d {printf "%s (%s days) ", $2, $3}' "$RUNNER_TEMP/held.txt")
+        echo "stale=$stale" >> "$GITHUB_OUTPUT"
+
+    - name: Open a PR per hold that can go
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        HOLDS: ${{ inputs.holds-file }}
+      run: |
+        set -euo pipefail
+        awk '$1 == "release" {print $2}' "$RUNNER_TEMP/held.txt" | while read -r name; do
+          git checkout -- "$HOLDS"
+          link=$(jq -r --arg n "$name" '.[$n].link' "$HOLDS")
+          jq --indent 2 --arg n "$name" 'del(.[$n])' "$HOLDS" > "$HOLDS.new"
+          mv "$HOLDS.new" "$HOLDS"
+          "$GITHUB_ACTION_PATH/scripts/open-signed-pr.sh" "release/$name" "chore: release $name" \
+            "\`$name\` builds from nixos-unstable again, so it no longer needs its hold ($link). A consumer whose nixpkgs is older keeps failing its lock check until it catches up.
+
+        🤖 Opened by the nix-holds release action." "$HOLDS"
+        done
