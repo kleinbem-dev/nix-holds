@@ -10,7 +10,7 @@ First version for use outside the kleinbem fleet.
   packages, CUDA/ROCm, ...) instead of a forced `allowUnfree = true`.
 - Release checks build with your own overlays, so holds of your own
   packages can be released too.
-- Release action (`uses: kleinbem/nix-holds@<sha>`): opens a PR per hold that
+- Release action (`uses: kleinbem-dev/nix-holds@<sha>`): opens a PR per hold that
   can go; its `stale` output lists the old ones.
 - CLI: `nix-holds add`, `remove`, `list`, `check`.
 - Pinned revisions are fetched with `fetchTarball`, so the overlay works
