@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.0 (2026-10-31)
 
 First version for use outside the kleinbem fleet.
 
@@ -12,7 +12,10 @@ First version for use outside the kleinbem fleet.
   packages can be released too.
 - Release action (`uses: kleinbem-dev/nix-holds@<sha>`): opens a PR per hold that
   can go; its `stale` output lists the old ones.
-- CLI: `nix-holds add`, `remove`, `list`, `check`.
+- CLI: `nix-holds add`, `remove`, `list`, `check`
+  (`nix run github:kleinbem-dev/nix-holds`), for Linux and aarch64-darwin.
+- Release checks carry their hold (`nixHolds`), so `check` and the action
+  read the holds the flake actually uses.
 - Pinned revisions are fetched with `fetchTarball`, so the overlay works
   without the flakes feature.
 - Removed: the kleinbem fleet's own holds and the outputs built from them
