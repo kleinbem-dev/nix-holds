@@ -7,8 +7,8 @@ works, and everything else moves on. Without this, the whole lock update
 stops until the package is fixed. Each hold says why and where the fix is,
 and goes away once the package builds from nixos-unstable again.
 
-This repo still carries the kleinbem fleet's own holds; they are moving to
-kleinbem/nix-holds-fleet.
+An example of it in use:
+[kleinbem/nix-holds-fleet](https://github.com/kleinbem/nix-holds-fleet).
 
 ## How it works
 
@@ -16,7 +16,7 @@ kleinbem/nix-holds-fleet.
 
 | Field | Meaning |
 |---|---|
-| `from` | `"stable"` (the nixpkgs-stable input, which keeps getting security fixes) or `{ rev, narHash }`, a pinned nixos-unstable commit, usually the last one the fleet ran |
+| `from` | `"stable"` (the nixpkgs-stable input, which keeps getting security fixes) or `{ rev, narHash }`, a pinned nixos-unstable commit, usually the last one you ran |
 | `since` | when the hold started |
 | `releaseWhen` | optional: the nixpkgs attribute whose repair ends the hold (default: the package itself), e.g. the broken dependency of one of our own packages |
 | `reason`, `link` | why, and the upstream issue or PR that fixes it |
@@ -73,11 +73,12 @@ yourself.
    keeps failing its lock check until it catches up, so nothing breaks in
    between.
 3. **Alert:** a hold older than 14 days misses the fixes of the newer
-   nixpkgs. This repo's weekly `release` workflow alerts via ntfy.
+   nixpkgs; alert on the action's `stale` output (nix-holds-fleet's weekly
+   workflow sends it to ntfy).
 
-The `check` only evaluates the held packages and their NixOS tests: a
-consumer may adjust a held package (the open-webui container fixes its
-wrapper), so the consumer's own CI builds the real thing.
+Evaluate the held packages in your CI and build them where you use them:
+you may adjust a held package on top (a wrapper fix, a patch), and that is
+the package you deploy.
 
 A held package runs under the NixOS module of the consumer's current nixpkgs,
 and a module that expects a newer package only fails at runtime.
