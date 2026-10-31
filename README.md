@@ -63,9 +63,26 @@ yourself.
 - `releaseChecks pkgs`: what ends each hold (`releaseWhen`), from a package
   set without the holds but with your overlays
 
+## The CLI
+
+```sh
+nix run github:kleinbem/nix-holds -- add open-webui \
+  --reason "chromadb needs posthog, broken since mcp 2" \
+  --link https://github.com/NixOS/nixpkgs/pull/578265 \
+  --release-when python3Packages.posthog
+nix run github:kleinbem/nix-holds -- list
+nix run github:kleinbem/nix-holds -- check   # which holds can go
+```
+
+`add` holds a package on the nixpkgs your `flake.lock` had before its last
+nixpkgs update, read from git history: the usual case right after an update
+broke it. `--from stable` or `--from <rev>` choose another. `remove` drops a
+hold, and `check` runs the release checks locally. `--file`, `--lock` and
+`--input` point it at another holds file, lock or nixpkgs input.
+
 ## Lifecycle
 
-1. **Hold:** a PR adding an entry, with the reason and the upstream link.
+1. **Hold:** `nix-holds add` in a PR, with the reason and the upstream link.
 2. **Release:** the release action (`uses: kleinbem/nix-holds@<sha>`, after
    installing Nix) builds each release check from nixos-unstable and opens a
    PR removing the hold once it builds. Its `stale` output lists the holds
@@ -95,6 +112,10 @@ checks.${system} = holds.nixosTests (import nixpkgs {
 
 Each pinned commit is another full package set at evaluation time; keep
 holds few and short.
+
+Don't hold packages the standard environment is built from (on darwin, jq
+is one): the darwin stdenv checks that its bootstrap tools come from one
+compiler, and evaluation fails.
 
 ## Not here
 

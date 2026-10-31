@@ -18,6 +18,7 @@
       systems = [
         "x86_64-linux"
         "aarch64-linux"
+        "aarch64-darwin"
       ];
       forAllSystems = f: lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
     in
@@ -71,12 +72,41 @@
             );
         };
 
-      # Tests of mkHolds itself, on holds from nixpkgs-stable.
+      # The CLI: add, remove, list and check holds. Nix itself comes from the
+      # user's PATH.
+      packages = forAllSystems (pkgs: {
+        default = self.packages.${pkgs.stdenv.hostPlatform.system}.nix-holds;
+        nix-holds =
+          let
+            releaseCheck = pkgs.writeShellApplication {
+              name = "nix-holds-release-check";
+              runtimeInputs = [
+                pkgs.coreutils
+                pkgs.jq
+              ];
+              text = builtins.readFile ./scripts/release-check.sh;
+            };
+          in
+          pkgs.writeShellApplication {
+            name = "nix-holds";
+            runtimeInputs = [
+              pkgs.coreutils
+              pkgs.git
+              pkgs.jq
+            ];
+            text = builtins.replaceStrings [ "@releaseCheck@" ] [ (lib.getExe releaseCheck) ] (
+              builtins.readFile ./scripts/nix-holds.sh
+            );
+          };
+      });
+
+      # Tests of mkHolds and the CLI.
       checks = forAllSystems (
         pkgs:
         import ./tests {
           inherit pkgs nixpkgs nixpkgs-stable;
           inherit (self.lib) mkHolds;
+          inherit (self.packages.${pkgs.stdenv.hostPlatform.system}) nix-holds;
         }
       );
 
