@@ -55,24 +55,25 @@ assert lib.assertMsg (lib.allUnique allAttrs) "nix-holds prs: an attribute is in
   # only accepts chapters whose identifiers are in nixpkgs' own
   # redirects.json, so an out-of-tree chapter fails the manual build. The
   # options are documented either way. The module system passes only the
-  # arguments a module names, so the wrapper takes over the module's own
-  # argument names. A module needs its packages: apply the overlay too.
-  nixosModules = lib.concatMapAttrs (
-    _: entry:
-    lib.mapAttrs (
-      _: path:
-      let
-        module = import "${fetch entry}/${path}";
-      in
-      lib.setFunctionArgs (
-        args:
+  # arguments a module names, so the wrapper of a function module takes over
+  # its argument names. A module needs its packages: apply the overlay too.
+  nixosModules =
+    let
+      withoutDoc = module: module // { meta = removeAttrs (module.meta or { }) [ "doc" ]; };
+    in
+    lib.concatMapAttrs (
+      _: entry:
+      lib.mapAttrs (
+        _: path:
         let
-          evaluated = module args;
+          module = import "${fetch entry}/${path}";
         in
-        evaluated // { meta = removeAttrs (evaluated.meta or { }) [ "doc" ]; }
-      ) (lib.functionArgs module)
-    ) (entry.modules or { })
-  ) entries;
+        if lib.isFunction module then
+          lib.setFunctionArgs (args: withoutDoc (module args)) (lib.functionArgs module)
+        else
+          withoutDoc module
+      ) (entry.modules or { })
+    ) entries;
 
   # Per entry, from a package set *without* the overlay: its packages, and
   # whether that nixpkgs already has all of them in the same or a newer

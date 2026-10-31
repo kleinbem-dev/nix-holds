@@ -82,14 +82,10 @@ need_entry() {
   entries | jq -e --arg n "$name" 'has($n)' >/dev/null || die "$file has no entry $name"
 }
 
-pin() {
+# The narHash of commit $rev of OWNER/REPO $1.
+nar_hash() {
   [[ $rev =~ ^[0-9a-f]{40}$ ]] || die "the commit must be a full 40-character SHA"
-  local source hash
-  source=$(entries | jq -r --arg n "$name" '.[$n] | "github:\(.owner)/\(.repo)"')
-  hash=$(nix flake prefetch --json "$source/$rev" | jq -r .hash) || die "cannot fetch $source/$rev"
-  entries | jq --arg n "$name" --arg rev "$rev" --arg h "$hash" \
-    '.[$n].rev = $rev | .[$n].narHash = $h' | write_entries
-  echo "$name pinned to $rev ($hash)"
+  nix flake prefetch --json "github:$1/$rev" | jq -er .hash || die "cannot fetch github:$1/$rev"
 }
 
 system() {
@@ -102,18 +98,24 @@ case "$command" in
     [[ $pr =~ ^[0-9]+$ ]] || die "add needs --pr (the nixpkgs PR number)"
     [[ $repo == */* ]] || die "add needs --repo OWNER/REPO (where the PR's branch is)"
     [[ -n $attrs ]] || die "add needs --attrs (the packages to take from the PR)"
+    if entries | jq -e --arg n "$name" 'has($n)' >/dev/null; then
+      die "$file already has an entry $name (remove it first)"
+    fi
     modules_json='{}'
     for module in "${modules[@]}"; do
       [[ $module == ?*=?* ]] || die "--module needs NAME=PATH"
       modules_json=$(jq --arg n "${module%%=*}" --arg p "${module#*=}" '.[$n] = $p' <<<"$modules_json")
     done
+    hash=""
+    [[ -z $rev ]] || hash=$(nar_hash "$repo")
     entries | jq --arg n "$name" --argjson pr "$pr" --arg owner "${repo%%/*}" --arg repo "${repo#*/}" \
+      --arg rev "$rev" --arg h "$hash" \
       --arg attrs "$attrs" --arg scope "$scope" --argjson modules "$modules_json" '
-      .[$n] = ({pr: $pr, owner: $owner, repo: $repo, rev: "", narHash: "", attrs: ($attrs | split(","))}
+      .[$n] = ({pr: $pr, owner: $owner, repo: $repo, rev: $rev, narHash: $h, attrs: ($attrs | split(","))}
         + (if $scope == "" then {} else {scope: ($scope | split(","))} end)
         + (if $modules == {} then {} else {modules: $modules} end))' | write_entries
     if [[ -n $rev ]]; then
-      pin
+      echo "added $name, pinned to $rev ($hash)"
     else
       echo "added $name; pin it with: nix-holds pr pin $name SHA"
     fi
@@ -121,7 +123,10 @@ case "$command" in
   pin)
     need_entry
     rev="${args[2]:-}"
-    pin
+    hash=$(nar_hash "$(entries | jq -r --arg n "$name" '.[$n] | "\(.owner)/\(.repo)"')")
+    entries | jq --arg n "$name" --arg rev "$rev" --arg h "$hash" \
+      '.[$n].rev = $rev | .[$n].narHash = $h' | write_entries
+    echo "$name pinned to $rev ($hash)"
     ;;
   remove)
     need_entry

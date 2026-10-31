@@ -54,7 +54,10 @@ let
       old-hello = {
         pr = 2;
         attrs = [ "hello" ];
-        modules.fake = "nixos/fake.nix";
+        modules = {
+          fake = "nixos/fake.nix";
+          fake-attrs = "nixos/fake-attrs.nix";
+        };
       };
     };
   };
@@ -137,6 +140,12 @@ let
     };
     testPrModuleWithoutDoc = {
       expr = fakeModule.meta;
+      expected = {
+        maintainers = [ ];
+      };
+    };
+    testPrAttrsetModuleWithoutDoc = {
+      expr = prs.nixosModules.fake-attrs.meta;
       expected = {
         maintainers = [ ];
       };
@@ -228,6 +237,11 @@ in
         if nix-holds pr pin nope 0000000000000000000000000000000000000000 2>/dev/null; then echo "pin of a missing entry should fail" >&2; exit 1; fi
         if nix-holds pr add x --pr 3 --attrs x 2>/dev/null; then echo "add without --repo should fail" >&2; exit 1; fi
         if nix-holds pr add x --pr 3 --repo a/b --attrs x --module bad 2>/dev/null; then echo "a module without a path should fail" >&2; exit 1; fi
+        if nix-holds pr add berd --pr 2 --repo other/nixpkgs --attrs berd 2>/dev/null; then echo "adding an existing entry should fail" >&2; exit 1; fi
+        test "$(jq -r .berd.owner nixpkgs-prs.json)" = someone
+        # A --rev that can't be pinned adds nothing.
+        if nix-holds pr add x --pr 3 --repo a/b --attrs x --rev abc 2>/dev/null; then echo "add with a short --rev should fail" >&2; exit 1; fi
+        test "$(jq -r 'has("x")' nixpkgs-prs.json)" = false
         nix-holds pr remove berd
         test "$(jq -r 'keys | join(",")' nixpkgs-prs.json)" = mesh
         if nix-holds pr remove berd 2>/dev/null; then echo "removing a missing entry should fail" >&2; exit 1; fi
