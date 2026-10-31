@@ -83,9 +83,9 @@ hold, and `check` runs the release checks locally. `--file`, `--lock` and
 ## Lifecycle
 
 1. **Hold:** `nix-holds add` in a PR, with the reason and the upstream link.
-2. **Release:** the release action (`uses: kleinbem-dev/nix-holds@<sha>`, after
-   installing Nix) builds each release check from nixos-unstable and opens a
-   PR removing the hold once it builds. Its `stale` output lists the holds
+2. **Release:** the release action (`uses: kleinbem-dev/nix-holds@<sha> # v0.1.0`,
+   after installing Nix) builds each release check from nixos-unstable and
+   opens a PR removing the hold once it builds. Its `stale` output lists the holds
    older than 14 days, for your own alert. A consumer whose nixpkgs is older
    keeps failing its lock check until it catches up, so nothing breaks in
    between.
