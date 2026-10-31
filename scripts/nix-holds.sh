@@ -132,10 +132,11 @@ case "$command" in
   list)
     today=$(date -u +%s)
     holds | jq -r 'to_entries[] | [.key, (.value.from | if type == "string" then . else .rev[0:12] end),
-      .value.since, (.value.releaseWhen // "")] | @tsv' |
+      (.value.since // ""), (.value.releaseWhen // "")] | @tsv' |
       while IFS=$'\t' read -r name src since rw; do
-        days=$(((today - $(date -u -d "$since" +%s)) / 86400))
-        printf '%-24s %-14s %s (%s days)%s\n' "$name" "$src" "$since" "$days" "${rw:+  until $rw builds}"
+        age=""
+        [[ -z $since ]] || age="$since ($(((today - $(date -u -d "$since" +%s)) / 86400)) days)"
+        printf '%-24s %-14s %s%s\n' "$name" "$src" "${age:-no date}" "${rw:+  until $rw builds}"
       done
     ;;
   check)

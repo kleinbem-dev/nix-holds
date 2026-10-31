@@ -126,6 +126,9 @@ in
         test "$(jq -r 'keys | join(",")' held-packages.json)" = bar,baz,foo
 
         nix-holds list | grep -q '^foo  *a  '
+        jq '.nodate = {from: "stable", reason: "r"}' held-packages.json > h && mv h held-packages.json
+        nix-holds list | grep -q '^nodate  *stable  *no date'
+        nix-holds remove nodate
         nix-holds remove foo
         test "$(jq -r 'keys | join(",")' held-packages.json)" = bar,baz
         if nix-holds remove foo 2>/dev/null; then echo "removing a missing hold should fail" >&2; exit 1; fi
