@@ -86,7 +86,8 @@ assert lib.assertMsg (lib.allUnique allAttrs) "nix-holds prs: an attribute is in
         ours = packagesOf pkgs entry;
         inNixpkgs =
           attr:
-          pkgs ? ${attr} && builtins.compareVersions (pkgs.${attr}.version or "") (ours.${attr}.version or "") >= 0;
+          pkgs ? ${attr}
+          && builtins.compareVersions (pkgs.${attr}.version or "") (ours.${attr}.version or "") >= 0;
       in
       {
         packages = ours;
