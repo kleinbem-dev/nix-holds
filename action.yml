@@ -11,7 +11,7 @@ inputs:
     description: Flake with the release checks (releaseChecks.<system>.<name> from mkHolds)
     default: .
   holds-file:
-    description: The holds file, relative to the repository root
+    description: The holds file the flake's mkHolds reads, relative to the repository root (edited for the release PRs)
     default: held-packages.json
   channel:
     description: The nixpkgs the release checks build from (overrides the flake's nixpkgs input)
@@ -31,12 +31,11 @@ runs:
       shell: bash
       env:
         FLAKE: ${{ inputs.flake }}
-        HOLDS: ${{ inputs.holds-file }}
         CHANNEL: ${{ inputs.channel }}
         STALE_DAYS: ${{ inputs.stale-days }}
       run: |
         set -euo pipefail
-        "$GITHUB_ACTION_PATH/scripts/release-check.sh" "$FLAKE" "$HOLDS" "$CHANNEL" \
+        "$GITHUB_ACTION_PATH/scripts/release-check.sh" "$FLAKE" "$CHANNEL" \
           | tee "$RUNNER_TEMP/held.txt"
         stale=$(awk -v d="$STALE_DAYS" '$1 == "held" && $3 > d {printf "%s (%s days) ", $2, $3}' "$RUNNER_TEMP/held.txt")
         echo "stale=$stale" >> "$GITHUB_OUTPUT"
@@ -50,6 +49,10 @@ runs:
         set -euo pipefail
         awk '$1 == "release" {print $2}' "$RUNNER_TEMP/held.txt" | while read -r name; do
           git checkout -- "$HOLDS"
+          if ! jq -e --arg n "$name" 'has($n)' "$HOLDS" >/dev/null; then
+            echo "::warning::$name can go, but $HOLDS has no entry for it: is it the file the flake's mkHolds reads?"
+            continue
+          fi
           link=$(jq -r --arg n "$name" '.[$n].link' "$HOLDS")
           jq --indent 2 --arg n "$name" 'del(.[$n])' "$HOLDS" > "$HOLDS.new"
           mv "$HOLDS.new" "$HOLDS"

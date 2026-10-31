@@ -1,36 +1,30 @@
 #!/usr/bin/env bash
-# Usage: scripts/release-check.sh FLAKE HOLDS-FILE CHANNEL
+# Usage: scripts/release-check.sh FLAKE CHANNEL
 #
-# For each hold in HOLDS-FILE that FLAKE has a release check for
-# (releaseChecks.<system>.<name>, from mkHolds), builds that check with the
-# flake's nixpkgs set to CHANNEL. Prints "release <name>" for each that builds
-# and "held <name> <days>" for the others.
+# Builds each of FLAKE's release checks (releaseChecks.<system>.<name>, from
+# mkHolds) with the flake's nixpkgs set to CHANNEL. The holds, their names and
+# dates, come from those checks, so they are the ones the flake uses. Prints
+# "release <name>" for each that builds and "held <name> <days>" for the
+# others (no days for a hold without `since`).
 set -uo pipefail
 
-flake="$1" holds="$2" channel="$3"
+flake="$1" channel="$2"
 system=$(nix eval --raw --impure --expr builtins.currentSystem)
 today=$(date -u +%s)
-checks=$(nix eval --json "$flake#releaseChecks.$system" --apply builtins.attrNames --override-input nixpkgs "$channel") || {
+holds=$(nix eval --json "$flake#releaseChecks.$system" --override-input nixpkgs "$channel" \
+  --apply 'builtins.mapAttrs (_: check: { since = check.nixHolds.since or null; })') || {
   echo "cannot evaluate $flake#releaseChecks.$system" >&2
   exit 1
 }
 
-keys=$(jq -r 'keys[]' "$holds") || {
-  echo "cannot read the holds in $holds" >&2
-  exit 1
-}
-[[ -n $keys ]] || exit 0
-mapfile -t names <<<"$keys"
+mapfile -t names < <(jq -r 'keys[]' <<<"$holds")
 for name in "${names[@]}"; do
-  if ! jq -e --arg n "$name" 'index($n)' <<<"$checks" >/dev/null; then
-    echo "skipping $name: $flake has no release check for it on $system" >&2
-    continue
-  fi
-  since=$(jq -r --arg n "$name" '.[$n].since' "$holds")
-  days=$(((today - $(date -u -d "$since" +%s)) / 86400))
+  since=$(jq -r --arg n "$name" '.[$n].since // empty' <<<"$holds")
+  days=""
+  [[ -z $since ]] || days=$(((today - $(date -u -d "$since" +%s)) / 86400))
   if nix build --no-link "$flake#releaseChecks.$system.\"$name\"" --override-input nixpkgs "$channel" >&2; then
     echo "release $name"
   else
-    echo "held $name $days"
+    echo "held $name${days:+ $days}"
   fi
 done
