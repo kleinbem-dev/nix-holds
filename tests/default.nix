@@ -126,8 +126,8 @@ in
         test "$(jq -r 'keys | join(",")' held-packages.json)" = bar,baz,foo
 
         nix-holds list | grep -q '^foo  *a  '
-        jq '.nodate = {from: "stable", reason: "r"}' held-packages.json > h && mv h held-packages.json
-        nix-holds list | grep -q '^nodate  *stable  *no date'
+        jq '.nodate = {from: "stable", reason: "r", releaseWhen: "python3Packages.x"}' held-packages.json > h && mv h held-packages.json
+        nix-holds list | grep -q '^nodate  *stable  *no date  until python3Packages.x builds$'
         nix-holds remove nodate
         nix-holds remove foo
         test "$(jq -r 'keys | join(",")' held-packages.json)" = bar,baz
