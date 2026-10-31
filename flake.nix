@@ -71,50 +71,10 @@
             );
         };
 
-      # The holds of the kleinbem fleet, until they move to their own repo.
-      lib.mkOverlay =
-        {
-          extraOverlays ? [ ],
-        }:
-        (self.lib.mkHolds {
-          holds = ./held-packages.json;
-          inherit extraOverlays;
-        }).overlay;
-
-      overlays.default = self.lib.mkOverlay { };
-
-      lib.nixosTests = (self.lib.mkHolds { holds = ./held-packages.json; }).nixosTests;
-
-      # For the release action: what ends each of the fleet's holds.
-      releaseChecks = forAllSystems (
-        pkgs: (self.lib.mkHolds { holds = ./held-packages.json; }).releaseChecks pkgs
-      );
-
-      # Evaluates every held package this flake can provide on its own, from
-      # its pinned nixpkgs, and its NixOS tests. Not a build: consumers may
-      # adjust a held package (the open-webui container fixes its wrapper),
-      # so their own CI builds the real thing.
+      # Tests of mkHolds itself, on holds from nixpkgs-stable.
       checks = forAllSystems (
         pkgs:
-        let
-          held = import nixpkgs {
-            inherit (pkgs.stdenv.hostPlatform) system;
-            config.allowUnfree = true;
-            overlays = [ self.overlays.default ];
-          };
-          names = builtins.filter (name: pkgs ? ${name}) (
-            builtins.attrNames (lib.importJSON ./held-packages.json)
-          );
-          drvs =
-            map (name: "${name} ${held.${name}.drvPath}") names
-            ++ lib.mapAttrsToList (test: drv: "nixosTests.${test} ${drv.drvPath}") (self.lib.nixosTests held);
-        in
-        {
-          held-packages = pkgs.writeText "held-packages" (
-            builtins.concatStringsSep "\n" (map builtins.unsafeDiscardOutputDependency drvs)
-          );
-        }
-        // import ./tests {
+        import ./tests {
           inherit pkgs nixpkgs nixpkgs-stable;
           inherit (self.lib) mkHolds;
         }
