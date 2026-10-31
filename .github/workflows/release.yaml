@@ -26,31 +26,17 @@ jobs:
         with:
           github-token: ${{ steps.app-token.outputs.token }}
 
-      - name: Build each hold's cause from nixos-unstable
-        run: .github/scripts/release-check.sh | tee "$RUNNER_TEMP/held.txt"
-
-      - name: Open a PR per hold that can go
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          set -euo pipefail
-          awk '$1 == "release" {print $2}' "$RUNNER_TEMP/held.txt" | while read -r name; do
-            git checkout -- held-packages.json
-            link=$(jq -r --arg n "$name" '.[$n].link' held-packages.json)
-            jq --indent 2 --arg n "$name" 'del(.[$n])' held-packages.json > held-packages.json.new
-            mv held-packages.json.new held-packages.json
-            .github/scripts/open-signed-pr.sh "release/$name" "chore: release $name" \
-              "\`$name\` builds from nixos-unstable again, so it no longer needs its hold ($link). A consumer whose nixpkgs is older keeps failing its lock check until it catches up.
-
-          🤖 Opened by the release workflow." held-packages.json
-          done
+      - uses: ./
+        id: release
+        with:
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Alert for holds older than 14 days
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_ALERT_TOPIC }}
+          long: ${{ steps.release.outputs.stale }}
         run: |
           set -euo pipefail
-          long=$(awk '$1 == "held" && $3 > 14 {printf "%s (%s days) ", $2, $3}' "$RUNNER_TEMP/held.txt")
           if [ -z "$long" ] || [ -z "$NTFY_TOPIC" ]; then
             exit 0
           fi

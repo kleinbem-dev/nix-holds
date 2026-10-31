@@ -1,10 +1,14 @@
 # nix-holds
 
-Packages the kleinbem fleet holds back from nixos-unstable.
+Hold packages back from nixos-unstable while they're broken there.
 
 When one package breaks in nixos-unstable, it stays on a nixpkgs where it
-works, and everything else moves on. Without this, the fleet's whole lock
-update stops until the package is fixed.
+works, and everything else moves on. Without this, the whole lock update
+stops until the package is fixed. Each hold says why and where the fix is,
+and goes away once the package builds from nixos-unstable again.
+
+This repo still carries the kleinbem fleet's own holds; they are moving to
+kleinbem/nix-holds-fleet.
 
 ## How it works
 
@@ -23,27 +27,53 @@ Packages a consumer's package set doesn't have are left out.
 
 ## Using it
 
+Keep your holds in your own repo, in a `held-packages.json` as above:
+
 ```nix
 inputs.nix-holds = {
   url = "github:kleinbem/nix-holds";
+  inputs.nixpkgs.follows = "nixpkgs";
   inputs.nixpkgs-stable.follows = "nixpkgs-stable";
 };
+
+# outputs
+let
+  holds = inputs.nix-holds.lib.mkHolds {
+    holds = ./held-packages.json;
+    inherit (inputs) nixpkgs-stable;
+    # Your own package overlays, so your packages can be held too.
+    extraOverlays = [ inputs.my-packages.overlays.default ];
+  };
+in
+{
+  # NixOS: nixpkgs.overlays = [ holds.overlay ];  (after your own overlays)
+  releaseChecks = forAllSystems (pkgs: holds.releaseChecks pkgs);
+}
 ```
 
-- Plain: `nixpkgs.overlays = [ inputs.nix-holds.overlays.default ];`
-- With your own packages, so they can be held too:
-  `inputs.nix-holds.lib.mkOverlay { extraOverlays = [ inputs.nix-packages.overlays.default ]; }`,
-  placed after those overlays.
+The held package sets get your nixpkgs config: `allowUnfree`, insecure
+packages, CUDA/ROCm and the other common settings are taken from the package
+set the overlay is applied to. Pass `config` to `mkHolds` to set them
+yourself.
+
+`mkHolds` returns:
+
+- `overlay`: the held packages
+- `nixosTests pkgs`: the nixpkgs NixOS tests of the held packages (see below)
+- `releaseChecks pkgs`: what ends each hold (`releaseWhen`), from a package
+  set without the holds but with your overlays
 
 ## Lifecycle
 
 1. **Hold:** a PR adding an entry, with the reason and the upstream link.
-2. **Release:** the weekly `release` workflow builds each hold's cause
-   (`releaseWhen`) from nixos-unstable and opens a PR removing the hold once
-   it builds. A consumer whose nixpkgs is older keeps failing its lock check
-   until it catches up, so nothing breaks in between.
-3. **Alert:** a hold older than 14 days alerts via ntfy: the package misses
-   the fixes of the newer nixpkgs.
+2. **Release:** the release action (`uses: kleinbem/nix-holds@<sha>`, after
+   installing Nix) builds each release check from nixos-unstable and opens a
+   PR removing the hold once it builds. Its `stale` output lists the holds
+   older than 14 days, for your own alert. A consumer whose nixpkgs is older
+   keeps failing its lock check until it catches up, so nothing breaks in
+   between.
+3. **Alert:** a hold older than 14 days misses the fixes of the newer
+   nixpkgs. This repo's weekly `release` workflow alerts via ntfy.
 
 The `check` only evaluates the held packages and their NixOS tests: a
 consumer may adjust a held package (the open-webui container fixes its
@@ -51,14 +81,14 @@ wrapper), so the consumer's own CI builds the real thing.
 
 A held package runs under the NixOS module of the consumer's current nixpkgs,
 and a module that expects a newer package only fails at runtime.
-`lib.nixosTests pkgs` gives the nixpkgs NixOS tests of the held packages
+`nixosTests pkgs` gives the nixpkgs NixOS tests of the held packages
 (`tests`, see above) from a package set with the holds applied; run them in
 your CI with your own overlays on top, since that is the package you deploy:
 
 ```nix
-checks.${system} = inputs.nix-holds.lib.nixosTests (import nixpkgs {
+checks.${system} = holds.nixosTests (import nixpkgs {
   inherit system;
-  overlays = [ inputs.nix-holds.overlays.default ] ++ yourOverlays;
+  overlays = yourOverlays ++ [ holds.overlay ];
 });
 ```
 
