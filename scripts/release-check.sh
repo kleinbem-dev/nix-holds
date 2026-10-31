@@ -15,7 +15,12 @@ checks=$(nix eval --json "$flake#releaseChecks.$system" --apply builtins.attrNam
   exit 1
 }
 
-mapfile -t names < <(jq -r 'keys[]' "$holds")
+keys=$(jq -r 'keys[]' "$holds") || {
+  echo "cannot read the holds in $holds" >&2
+  exit 1
+}
+[[ -n $keys ]] || exit 0
+mapfile -t names <<<"$keys"
 for name in "${names[@]}"; do
   if ! jq -e --arg n "$name" 'index($n)' <<<"$checks" >/dev/null; then
     echo "skipping $name: $flake has no release check for it on $system" >&2
