@@ -97,7 +97,7 @@ hold, and `hold check` runs the release checks locally. `--file`, `--lock` and
 ## Lifecycle
 
 1. **Hold:** `nix-detour hold add` in a PR, with the reason and the upstream link.
-2. **Release:** the hold-release action (`uses: kleinbem-dev/nix-detour/hold-release@<sha>`,
+2. **Release:** the hold-release action (`uses: kleinbem-dev/nix-detour/hold-release@<sha> # v0.3.0`,
    after installing Nix) builds each release check from nixos-unstable and
    opens a PR removing the hold once it builds. Its `stale` output lists the holds
    older than 14 days, for your own alert. A consumer whose nixpkgs is older
@@ -161,7 +161,7 @@ evaluated, not built.
 
 ```yaml
 # in the workflow that opens or updates the lock PR, after installing Nix
-- uses: kleinbem-dev/nix-detour/update@<sha>
+- uses: kleinbem-dev/nix-detour/update@<sha> # v0.3.0
   id: holds
   with:
     mode: commit          # report (the default) only reports
@@ -180,7 +180,7 @@ runner's system).
 Holds kept in another repository (one list shared by several flakes):
 
 ```yaml
-- uses: kleinbem-dev/nix-detour/update@<sha>
+- uses: kleinbem-dev/nix-detour/update@<sha> # v0.3.0
   with:
     holds-repo: you/fleet-holds   # where held-packages.json is
     holds-input: fleet-holds      # the flake input that brings it in here
@@ -246,10 +246,10 @@ Lifecycle:
    doesn't evaluate, so don't commit one.
 2. **Pin** a newer commit of the PR later, by hand or with the pin action,
    which evaluates the packages and opens the PR:
-   `uses: kleinbem-dev/nix-detour/pr-pin@<sha> # v0.2.0` with `token`, `name` and
+   `uses: kleinbem-dev/nix-detour/pr-pin@<sha> # v0.3.0` with `token`, `name` and
    `rev`. Lock updates never move a pin, so nothing new runs unless you
    pinned it.
-3. **Remove:** `uses: kleinbem-dev/nix-detour/pr-merged@<sha> # v0.2.0` with `token`,
+3. **Remove:** `uses: kleinbem-dev/nix-detour/pr-merged@<sha> # v0.3.0` with `token`,
    on a schedule, opens a PR removing each entry your flake's nixpkgs has
    caught up with. An entry with modules gets a draft: switch to nixpkgs'
    own module first, then mark it ready.
