@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Update action with `holds-repo`: the holds repository is cloned at the
+  revision the flake's lock has for `holds-input`, so the checks see the
+  holds the lock update was validated with. A failing package the
+  repository holds by now is reported as "update the input" instead of
+  proposed again (and left out of commit mode's PR).
+
 - Update action: when the base branch's flake.lock can't be read (no git
   checkout, unknown input), it says so instead of stopping with exit 128.
 
