@@ -265,36 +265,36 @@ in
         lock b
 
         # Uncommitted update: the committed lock is the previous one.
-        nix-detour add foo --reason "broken in b" --link https://example.org/1
+        nix-detour hold add foo --reason "broken in b" --link https://example.org/1
         test "$(jq -c .foo.from held-packages.json)" = '{"rev":"a","narHash":"sha256-a"}'
         test "$(jq -r .foo.link held-packages.json)" = https://example.org/1
 
         # Committed update: found in the history.
         git add flake.lock; git commit -qm b
-        nix-detour add bar --reason r --release-when python3Packages.bar --tests t1,t2
+        nix-detour hold add bar --reason r --release-when python3Packages.bar --tests t1,t2
         test "$(jq -r .bar.from.rev held-packages.json)" = a
         test "$(jq -r .bar.releaseWhen held-packages.json)" = python3Packages.bar
         test "$(jq -c .bar.tests held-packages.json)" = '["t1","t2"]'
 
-        nix-detour add baz --from stable --reason r
+        nix-detour hold add baz --from stable --reason r
         test "$(jq -r .baz.from held-packages.json)" = stable
         test "$(jq -r 'keys | join(",")' held-packages.json)" = bar,baz,foo
 
-        nix-detour list | grep -q '^foo  *a  '
+        nix-detour hold list | grep -q '^foo  *a  '
         jq '.nodate = {from: "stable", reason: "r", releaseWhen: "python3Packages.x"}' held-packages.json > h && mv h held-packages.json
-        nix-detour list | grep -q '^nodate  *stable  *no date  until python3Packages.x builds$'
-        nix-detour remove nodate
-        nix-detour remove foo
+        nix-detour hold list | grep -q '^nodate  *stable  *no date  until python3Packages.x builds$'
+        nix-detour hold remove nodate
+        nix-detour hold remove foo
         test "$(jq -r 'keys | join(",")' held-packages.json)" = bar,baz
-        if nix-detour remove foo 2>/dev/null; then echo "removing a missing hold should fail" >&2; exit 1; fi
-        if nix-detour add qux 2>/dev/null; then echo "add without --reason should fail" >&2; exit 1; fi
-        if nix-detour add qux --reason 2>/dev/null; then echo "an option without a value should fail" >&2; exit 1; fi
+        if nix-detour hold remove foo 2>/dev/null; then echo "removing a missing hold should fail" >&2; exit 1; fi
+        if nix-detour hold add qux 2>/dev/null; then echo "add without --reason should fail" >&2; exit 1; fi
+        if nix-detour hold add qux --reason 2>/dev/null; then echo "an option without a value should fail" >&2; exit 1; fi
 
         # An invalid holds file stays as it is.
         echo '{ broken' > bad.json
-        if nix-detour add qux --reason r --from stable --file bad.json 2>/dev/null; then echo "add to an invalid file should fail" >&2; exit 1; fi
+        if nix-detour hold add qux --reason r --from stable --file bad.json 2>/dev/null; then echo "add to an invalid file should fail" >&2; exit 1; fi
         test "$(cat bad.json)" = '{ broken'
-        if nix-detour remove bar --file bad.json 2>/dev/null; then echo "remove from an invalid file should fail" >&2; exit 1; fi
+        if nix-detour hold remove bar --file bad.json 2>/dev/null; then echo "remove from an invalid file should fail" >&2; exit 1; fi
         test "$(cat bad.json)" = '{ broken'
         touch $out
       '';

@@ -13,14 +13,16 @@ once nixpkgs catches up:
   lands](#packages-from-open-nixpkgs-prs).
 
 Each detour says why and where the fix is, and goes away once nixpkgs has
-it: the release action and the pr-merged action open the PRs that end them.
+it: the hold-release and pr-merged actions open the PRs that end them.
 
 (Renamed from nix-holds on 2026-11-01. Web, git and flake URLs redirect,
-but GitHub Actions' `uses:` doesn't: change `kleinbem-dev/nix-holds` to
-`kleinbem-dev/nix-detour` in your workflows.)
+but GitHub Actions' `uses:` doesn't: in your workflows,
+`kleinbem-dev/nix-holds@` becomes `kleinbem-dev/nix-detour/hold-release@`,
+and `kleinbem-dev/nix-holds/<action>@` becomes
+`kleinbem-dev/nix-detour/<action>@`.)
 
 An example of it in use:
-[kleinbem/nix-holds-fleet](https://github.com/kleinbem/nix-holds-fleet).
+[kleinbem/nix-detour-fleet](https://github.com/kleinbem/nix-detour-fleet).
 
 ## How it works
 
@@ -78,31 +80,31 @@ yourself.
 ## The CLI
 
 ```sh
-nix run github:kleinbem-dev/nix-detour -- add open-webui \
+nix run github:kleinbem-dev/nix-detour -- hold add open-webui \
   --reason "chromadb needs posthog, broken since mcp 2" \
   --link https://github.com/NixOS/nixpkgs/pull/578265 \
   --release-when python3Packages.posthog
-nix run github:kleinbem-dev/nix-detour -- list
-nix run github:kleinbem-dev/nix-detour -- check   # which holds can go
+nix run github:kleinbem-dev/nix-detour -- hold list
+nix run github:kleinbem-dev/nix-detour -- hold check   # which holds can go
 ```
 
-`add` holds a package on the nixpkgs your `flake.lock` had before its last
+`hold add` holds a package on the nixpkgs your `flake.lock` had before its last
 nixpkgs update, read from git history: the usual case right after an update
-broke it. `--from stable` or `--from <rev>` choose another. `remove` drops a
-hold, and `check` runs the release checks locally. `--file`, `--lock` and
+broke it. `--from stable` or `--from <rev>` choose another. `hold remove` drops a
+hold, and `hold check` runs the release checks locally. `--file`, `--lock` and
 `--input` point it at another holds file, lock or nixpkgs input.
 
 ## Lifecycle
 
-1. **Hold:** `nix-detour add` in a PR, with the reason and the upstream link.
-2. **Release:** the release action (`uses: kleinbem-dev/nix-detour@<sha> # v0.2.0`,
+1. **Hold:** `nix-detour hold add` in a PR, with the reason and the upstream link.
+2. **Release:** the hold-release action (`uses: kleinbem-dev/nix-detour/hold-release@<sha>`,
    after installing Nix) builds each release check from nixos-unstable and
    opens a PR removing the hold once it builds. Its `stale` output lists the holds
    older than 14 days, for your own alert. A consumer whose nixpkgs is older
    keeps failing its lock check until it catches up, so nothing breaks in
    between.
 3. **Alert:** a hold older than 14 days misses the fixes of the newer
-   nixpkgs; alert on the action's `stale` output (nix-holds-fleet's weekly
+   nixpkgs; alert on the action's `stale` output (nix-detour-fleet's weekly
    workflow sends it to ntfy).
 
 Evaluate the held packages in your CI and build them where you use them:
@@ -166,7 +168,7 @@ evaluated, not built.
     token: ${{ secrets.TOKEN }}   # contents write, for the commit
 ```
 
-The holds go to the PR branch as one signed commit; the release action
+The holds go to the PR branch as one signed commit; the hold-release action
 removes them again once nixos-unstable has the fix. `held`, `failed` and a
 Markdown `report` are outputs, for a PR comment or an issue. `build: false`
 only evaluates (for big closures such as CUDA, where substituters decide);
