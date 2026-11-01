@@ -21,8 +21,17 @@ inputs:
   nix-args:
     description: Extra arguments for every nix eval and build of the flake, such as --override-input (split on spaces)
     default: ""
+  holds-repo:
+    description: The repository (owner/name) the holds file is in, when it isn't this one; checked through holds-input, and commit mode opens a PR there
+    default: ""
+  holds-input:
+    description: With holds-repo, the flake input that brings it into the checked flake
+    default: ""
+  holds-token:
+    description: With holds-repo in commit mode, a token that pushes and opens PRs there (default token)
+    default: ""
   holds-file:
-    description: The holds file the flake's mkHolds reads, relative to the repository root; without it in this repository, holds are reported unchecked
+    description: The holds file the flake's mkHolds reads, relative to the root of this repository (or of holds-repo); without it, holds are reported unchecked
     default: held-packages.json
   input:
     description: The nixpkgs input in flake.lock
@@ -52,6 +61,18 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Clone the holds repository
+      if: inputs.holds-repo != ''
+      shell: bash
+      working-directory: ${{ inputs.directory }}
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        HOLDS_REPO: ${{ inputs.holds-repo }}
+        HOLDS_INPUT: ${{ inputs.holds-input }}
+        HOLDS_TOKEN: ${{ inputs.holds-token }}
+        FLAKE: ${{ inputs.flake }}
+      run: '"$GITHUB_ACTION_PATH/../scripts/clone-holds.sh"'
+
     - name: Find what the update broke
       shell: bash
       working-directory: ${{ inputs.directory }}
@@ -81,4 +102,7 @@ runs:
         BASE: ${{ inputs.base }}
         BRANCH: ${{ inputs.branch || github.head_ref || github.ref_name }}
         BUILD: ${{ inputs.build }}
+        HOLDS_REPO: ${{ inputs.holds-repo }}
+        HOLDS_INPUT: ${{ inputs.holds-input }}
+        HOLDS_TOKEN: ${{ inputs.holds-token }}
       run: '"$GITHUB_ACTION_PATH/../scripts/hold.sh" "$RUNNER_TEMP/update.txt"'
