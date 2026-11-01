@@ -12,7 +12,12 @@ set -euo pipefail
 # A misspelt input would leave every check on the locked holds (some Nix
 # versions only warn about an unknown --override-input).
 lock="${FLAKE:-.}/flake.lock"
-if [[ -f $lock ]] && ! jq -e --arg i "$HOLDS_INPUT" '.nodes.root.inputs | has($i)' "$lock" >/dev/null; then
+# Nested paths (a/b) are walked through the lock, follows included.
+# shellcheck disable=SC2016  # a jq program
+known='. as $lock | def nodeof($segs): reduce $segs[] as $s ("root"; if . == null then null
+  else ($lock.nodes[.].inputs[$s] // null) | if type == "array" then nodeof(.) else . end end);
+  nodeof($i | split("/")) != null'
+if [[ -f $lock ]] && ! jq -e --arg i "$HOLDS_INPUT" "$known" "$lock" >/dev/null; then
   echo "holds-input $HOLDS_INPUT is not an input of ${FLAKE:-.} (see its flake.lock)" >&2
   exit 1
 fi
