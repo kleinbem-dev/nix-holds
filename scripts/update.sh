@@ -17,7 +17,8 @@
 # <target> <reason>" for a target that fails without one, and "ok <system> <count>"
 # for the watched packages that pass. --only limits the watched packages to
 # those names. NIX_DETOUR_ARGS: extra arguments for every nix eval and build
-# (such as --override-input), split on spaces. NIX_DETOUR_SYSTEMS: the
+# (such as --override-input), split on spaces; NIX_DETOUR_OVERRIDE is added
+# to them (clone-holds.sh sets it). NIX_DETOUR_SYSTEMS: the
 # systems to check, split on spaces (default: this one); evaluation works for
 # any system, builds only for this one.
 set -uo pipefail
@@ -33,7 +34,7 @@ while (($#)); do
   esac
 done
 
-read -ra extra <<<"${NIX_DETOUR_ARGS:-}"
+read -ra extra <<<"${NIX_DETOUR_ARGS:-} ${NIX_DETOUR_OVERRIDE:-}"
 tmp=$(mktemp -d) || exit 1
 trap 'rm -rf "$tmp"' EXIT
 native=$(nix eval --raw --impure --expr builtins.currentSystem)

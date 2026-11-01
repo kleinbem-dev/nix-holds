@@ -61,6 +61,17 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Clone the holds repository
+      if: inputs.holds-repo != ''
+      shell: bash
+      working-directory: ${{ inputs.directory }}
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        HOLDS_REPO: ${{ inputs.holds-repo }}
+        HOLDS_INPUT: ${{ inputs.holds-input }}
+        HOLDS_TOKEN: ${{ inputs.holds-token }}
+      run: '"$GITHUB_ACTION_PATH/../scripts/clone-holds.sh"'
+
     - name: Find what the update broke
       shell: bash
       working-directory: ${{ inputs.directory }}

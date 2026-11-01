@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Usage: scripts/clone-holds.sh
+#
+# The update action's first step when the holds file is in another
+# repository (HOLDS_REPO): clones it and exports, through GITHUB_ENV,
+# NIX_DETOUR_HOLDS_CLONE (the clone) and NIX_DETOUR_OVERRIDE (the
+# --override-input of HOLDS_INPUT with the clone), so every check, the first
+# one included, sees the same holds.
+set -euo pipefail
+
+[[ -n ${HOLDS_INPUT:-} ]] || { echo "holds-repo needs holds-input (its flake input here)" >&2; exit 1; }
+clone="$RUNNER_TEMP/holds-repo"
+rm -rf "$clone"
+if [[ -d $HOLDS_REPO ]]; then
+  # A local repository (for testing).
+  git clone -q "$HOLDS_REPO" "$clone"
+else
+  GH_TOKEN="${HOLDS_TOKEN:-${GH_TOKEN:-}}" gh repo clone "$HOLDS_REPO" "$clone" -- --depth 1 -q
+fi
+{
+  echo "NIX_DETOUR_HOLDS_CLONE=$clone"
+  echo "NIX_DETOUR_OVERRIDE=--override-input $HOLDS_INPUT path:$clone"
+} >>"$GITHUB_ENV"

@@ -6,8 +6,8 @@
 # and runs update.sh again: a package that still fails while held (or was
 # held already) can't be fixed by a hold; a package found only now (the next
 # failure of a target) is held in the next round, up to 5 rounds. With
-# HOLDS_REPO, the holds file is in that repository: it is cloned, checked
-# through --override-input HOLDS_INPUT, and commit mode opens a PR there.
+# HOLDS_REPO, the holds file is in that repository: clone-holds.sh cloned it
+# and points the checks at the clone, and commit mode opens a PR there.
 # Without the holds file nothing can be checked: one round, unchecked.
 #
 # Environment: FLAKE, HOLDS, INPUT, BASE, MODE (commit|report), BRANCH,
@@ -39,19 +39,10 @@ has() {
 
 holds_repo="${HOLDS_REPO:-}"
 if [[ -n $holds_repo ]]; then
-  [[ -n ${HOLDS_INPUT:-} ]] || { echo "holds-repo needs holds-input (its flake input here)" >&2; exit 1; }
-  clone="$RUNNER_TEMP/holds-repo"
-  rm -rf "$clone"
-  if [[ -d $holds_repo ]]; then
-    # A local repository (for testing).
-    git clone -q "$holds_repo" "$clone"
-  else
-    GH_TOKEN="${HOLDS_TOKEN:-${GH_TOKEN:-}}" gh repo clone "$holds_repo" "$clone" -- --depth 1 -q
-  fi
+  # Cloned by clone-holds.sh, which also points every check at the clone.
+  clone="${NIX_DETOUR_HOLDS_CLONE:?run clone-holds.sh first}"
   holds_file="$HOLDS"
-  HOLDS="$clone/$holds_file"
-  # Every check from here on sees the edited holds file.
-  export NIX_DETOUR_ARGS="${NIX_DETOUR_ARGS:-} --override-input $HOLDS_INPUT path:$clone"
+  [[ -z $holds_file ]] || HOLDS="$clone/$holds_file"
 fi
 
 held=() failed=() unchecked=()
@@ -147,10 +138,22 @@ cat "$RUNNER_TEMP/report.md" >>"$GITHUB_STEP_SUMMARY"
 if $checked; then
   if [[ $MODE == commit ]] && ((${#held[@]})); then
     if [[ -n $holds_repo ]]; then
+      # Only the new holds, on the holds file as it is now: changes merged
+      # there during the checks stay.
+      if [[ -d $holds_repo ]]; then
+        current=$(git -C "$holds_repo" show "HEAD:$holds_file" 2>/dev/null || echo '{}')
+      else
+        current=$(GH_TOKEN="${HOLDS_TOKEN:-${GH_TOKEN:-}}" gh api "repos/$holds_repo/contents/$holds_file" \
+          -H "Accept: application/vnd.github.raw" 2>/dev/null || echo '{}')
+      fi
+      jq --indent 2 --argjson current "$current" \
+        '$current + with_entries(select(.key | IN($ARGS.positional[]))) | to_entries | sort_by(.key) | from_entries' \
+        "$HOLDS" --args "${held[@]}" </dev/null >"$HOLDS.new"
+      mv "$HOLDS.new" "$HOLDS"
       body="$(cat "$RUNNER_TEMP/report.md")
 
 Found by the nix-detour update action on ${GITHUB_REPOSITORY:-the lock update}."
-      (cd "$clone" && GITHUB_REPOSITORY="$holds_repo" GH_TOKEN="${HOLDS_TOKEN:-$GH_TOKEN}" \
+      (cd "$clone" && GITHUB_REPOSITORY="$holds_repo" GH_TOKEN="${HOLDS_TOKEN:-${GH_TOKEN:-}}" \
         "$here/open-signed-pr.sh" nix-detour/holds "chore: hold ${held[*]}" "$body" "$holds_file")
     else
       "$here/commit-signed.sh" "$BRANCH" "chore: hold ${held[*]}" "$HOLDS"
