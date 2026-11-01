@@ -35,7 +35,8 @@ done
 
 read -ra extra <<<"${NIX_HOLDS_ARGS:-}"
 native=$(nix eval --raw --impure --expr builtins.currentSystem)
-read -ra systems <<<"${NIX_HOLDS_SYSTEMS:-$native}"
+read -ra systems <<<"${NIX_HOLDS_SYSTEMS:-}"
+((${#systems[@]})) || systems=("$native")
 # shellcheck disable=SC2016  # a Nix expression
 filter='ws: let only = builtins.filter (n: builtins.isString n && n != "") (builtins.split "," "'"$only"'"); in
   if only == [ ] then ws else builtins.intersectAttrs (builtins.listToAttrs (map (n: { name = n; value = null; }) only)) ws'
@@ -65,7 +66,7 @@ has_output() {
 
 # Checks one system; $system is the one.
 check() {
-  local system="$1" results broken watch targets target err chain name why
+  local system="$1" results broken watch targets target err chain name why list
   results='{}' broken=()
   watch="$flake#nixHoldsWatch.$system"
   if has_output nixHoldsWatch; then
@@ -81,7 +82,8 @@ check() {
         exit 1
       }
       results='{}'
-      for name in $(jq -r '.[]' <<<"$names"); do
+      mapfile -t list < <(jq -r '.[]' <<<"$names")
+    for name in "${list[@]}"; do
         one=$(nix eval "${extra[@]}" --json "$watch.\"$name\"" --apply 'p: { drv = p.drvPath; out = p.outPath; }' 2>/dev/null || echo null)
         results=$(jq --arg n "$name" --argjson v "$one" '.[$n] = $v' <<<"$results")
       done
@@ -121,7 +123,8 @@ check() {
       echo "cannot evaluate $flake#nixHoldsTargets.$system" >&2
       exit 1
     }
-    for target in $(jq -r '.[]' <<<"$targets"); do
+    mapfile -t list < <(jq -r '.[]' <<<"$targets")
+    for target in "${list[@]}"; do
       err=$(nix eval "${extra[@]}" --show-trace --raw "$flake#nixHoldsTargets.$system.\"$target\".target.drvPath" 2>&1 >/dev/null) && continue
       # The derivations in the trace, innermost first.
       chain=$(grep -oE "while evaluating derivation '[^']+'" <<<"$err" | cut -d"'" -f2 | tac | jq -Rsc 'split("\n") | map(select(. != ""))')
