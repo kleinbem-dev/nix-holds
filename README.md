@@ -164,7 +164,9 @@ removes them again once nixos-unstable has the fix. `held`, `failed` and a
 Markdown `report` are outputs, for a PR comment or an issue. `build: false`
 only evaluates (for big closures such as CUDA, where substituters decide);
 `directory` and `nix-args` cover a checkout in a subfolder and flakes that
-need `--override-input`. Without the holds file in the repository (holds
+need `--override-input`; `systems: x86_64-linux aarch64-linux` checks other
+systems' hosts from the same runner (evaluation only, builds need the
+runner's system). Without the holds file in the repository (holds
 kept in another flake), the action can't check its holds and reports the
 first round only.
 

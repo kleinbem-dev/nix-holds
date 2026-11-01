@@ -14,10 +14,12 @@
 #   and run: hold it and run again for the next.
 #
 # Prints "broken <name> <reason>" per package to hold, "unattributed
-# <target> <reason>" for a target that fails without one, and "ok <count>"
+# <target> <reason>" for a target that fails without one, and "ok <system> <count>"
 # for the watched packages that pass. --only limits the watched packages to
 # those names. NIX_HOLDS_ARGS: extra arguments for every nix eval and build
-# (such as --override-input), split on spaces.
+# (such as --override-input), split on spaces. NIX_HOLDS_SYSTEMS: the
+# systems to check, split on spaces (default: this one); evaluation works for
+# any system, builds only for this one.
 set -uo pipefail
 
 flake="$1"
@@ -32,8 +34,8 @@ while (($#)); do
 done
 
 read -ra extra <<<"${NIX_HOLDS_ARGS:-}"
-system=$(nix eval --raw --impure --expr builtins.currentSystem)
-watch="$flake#nixHoldsWatch.$system"
+native=$(nix eval --raw --impure --expr builtins.currentSystem)
+read -ra systems <<<"${NIX_HOLDS_SYSTEMS:-$native}"
 # shellcheck disable=SC2016  # a Nix expression
 filter='ws: let only = builtins.filter (n: builtins.isString n && n != "") (builtins.split "," "'"$only"'"); in
   if only == [ ] then ws else builtins.intersectAttrs (builtins.listToAttrs (map (n: { name = n; value = null; }) only)) ws'
@@ -61,76 +63,85 @@ has_output() {
   ! grep -q 'does not provide attribute' <<<"$err"
 }
 
-results='{}' broken=()
-if has_output nixHoldsWatch; then
-  # name -> { drv, out } or null when it doesn't evaluate. tryEval catches
-  # throws (broken, unfree, insecure, removed aliases); other errors fail the
-  # whole evaluation, and then each name is evaluated on its own.
-  results=$(nix eval "${extra[@]}" --json "$watch" --apply "ws: builtins.mapAttrs (_: p:
-    let r = builtins.tryEval (builtins.seq p.drvPath p.outPath); in
-    if r.success then { drv = p.drvPath; out = r.value; } else null) (($filter) ws)" 2>/dev/null)
-  if [[ -z $results ]]; then
-    names=$(nix eval "${extra[@]}" --json "$watch" --apply "ws: builtins.attrNames (($filter) ws)") || {
-      echo "cannot evaluate $watch" >&2
-      exit 1
-    }
-    results='{}'
-    for name in $(jq -r '.[]' <<<"$names"); do
-      one=$(nix eval "${extra[@]}" --json "$watch.\"$name\"" --apply 'p: { drv = p.drvPath; out = p.outPath; }' 2>/dev/null || echo null)
-      results=$(jq --arg n "$name" --argjson v "$one" '.[$n] = $v' <<<"$results")
-    done
-  fi
+# Checks one system; $system is the one.
+check() {
+  local system="$1" results broken watch targets target err chain name why
+  results='{}' broken=()
+  watch="$flake#nixHoldsWatch.$system"
+  if has_output nixHoldsWatch; then
+    # name -> { drv, out } or null when it doesn't evaluate. tryEval catches
+    # throws (broken, unfree, insecure, removed aliases); other errors fail the
+    # whole evaluation, and then each name is evaluated on its own.
+    results=$(nix eval "${extra[@]}" --json "$watch" --apply "ws: builtins.mapAttrs (_: p:
+      let r = builtins.tryEval (builtins.seq p.drvPath p.outPath); in
+      if r.success then { drv = p.drvPath; out = r.value; } else null) (($filter) ws)" 2>/dev/null)
+    if [[ -z $results ]]; then
+      names=$(nix eval "${extra[@]}" --json "$watch" --apply "ws: builtins.attrNames (($filter) ws)") || {
+        echo "cannot evaluate $watch" >&2
+        exit 1
+      }
+      results='{}'
+      for name in $(jq -r '.[]' <<<"$names"); do
+        one=$(nix eval "${extra[@]}" --json "$watch.\"$name\"" --apply 'p: { drv = p.drvPath; out = p.outPath; }' 2>/dev/null || echo null)
+        results=$(jq --arg n "$name" --argjson v "$one" '.[$n] = $v' <<<"$results")
+      done
+    fi
 
-  broken=()
-  while read -r name; do
-    [[ -n $name ]] || continue
-    broken+=("$name")
-    echo "broken $name $(reason "$name")"
-  done < <(jq -r 'to_entries[] | select(.value == null) | .key' <<<"$results")
+    broken=()
+    while read -r name; do
+      [[ -n $name ]] || continue
+      broken+=("$name")
+      echo "broken $name $(reason "$name")"
+    done < <(jq -r 'to_entries[] | select(.value == null) | .key' <<<"$results")
 
-  if $build; then
-    mapfile -t drvs < <(jq -r '.[] | select(. != null) | .drv' <<<"$results")
-    if ((${#drvs[@]})); then
-      # What no substituter has: the watched derivations themselves among what
-      # a build would build (their dependencies get built along the way).
-      tobuild=$(nix build "${extra[@]}" --dry-run "${drvs[@]/%/^*}" 2>&1 | sed -n '/will be built:/,/will be fetched/p' | grep -oE '/nix/store/[^ ]+\.drv' | sort -u)
-      mapfile -t mine < <(jq -r --arg b "$tobuild" '($b | split("\n")) as $set
-        | to_entries[] | select(.value != null and (.value.drv | IN($set[]))) | .value.drv' <<<"$results")
-      if ((${#mine[@]})); then
-        nix build "${extra[@]}" --no-link --keep-going "${mine[@]/%/^*}" >&2 || true
-        while read -r name out; do
-          if ! nix path-info "$out" >/dev/null 2>&1; then
-            broken+=("$name")
-            echo "broken $name fails to build"
-          fi
-        done < <(jq -r --arg m "${mine[*]}" '($m | split(" ")) as $set
-          | to_entries[] | select(.value != null and (.value.drv | IN($set[]))) | "\(.key) \(.value.out)"' <<<"$results")
+    if $build && [[ $system == "$native" ]]; then
+      mapfile -t drvs < <(jq -r '.[] | select(. != null) | .drv' <<<"$results")
+      if ((${#drvs[@]})); then
+        # What no substituter has: the watched derivations themselves among what
+        # a build would build (their dependencies get built along the way).
+        tobuild=$(nix build "${extra[@]}" --dry-run "${drvs[@]/%/^*}" 2>&1 | sed -n '/will be built:/,/will be fetched/p' | grep -oE '/nix/store/[^ ]+\.drv' | sort -u)
+        mapfile -t mine < <(jq -r --arg b "$tobuild" '($b | split("\n")) as $set
+          | to_entries[] | select(.value != null and (.value.drv | IN($set[]))) | .value.drv' <<<"$results")
+        if ((${#mine[@]})); then
+          nix build "${extra[@]}" --no-link --keep-going "${mine[@]/%/^*}" >&2 || true
+          while read -r name out; do
+            if ! nix path-info "$out" >/dev/null 2>&1; then
+              broken+=("$name")
+              echo "broken $name fails to build"
+            fi
+          done < <(jq -r --arg m "${mine[*]}" '($m | split(" ")) as $set
+            | to_entries[] | select(.value != null and (.value.drv | IN($set[]))) | "\(.key) \(.value.out)"' <<<"$results")
+        fi
       fi
     fi
   fi
-fi
 
-if [[ -z $only ]] && has_output nixHoldsTargets; then
-  targets=$(nix eval "${extra[@]}" --json "$flake#nixHoldsTargets.$system" --apply builtins.attrNames) || {
-    echo "cannot evaluate $flake#nixHoldsTargets.$system" >&2
-    exit 1
-  }
-  for target in $(jq -r '.[]' <<<"$targets"); do
-    err=$(nix eval "${extra[@]}" --show-trace --raw "$flake#nixHoldsTargets.$system.\"$target\".target.drvPath" 2>&1 >/dev/null) && continue
-    # The derivations in the trace, innermost first.
-    chain=$(grep -oE "while evaluating derivation '[^']+'" <<<"$err" | cut -d"'" -f2 | tac | jq -Rsc 'split("\n") | map(select(. != ""))')
-    # shellcheck disable=SC2016  # a Nix expression
-    name=$(nix eval "${extra[@]}" --raw "$flake#nixHoldsTargets.$system.\"$target\".pkgs" --apply "pkgs: let
-        names = map (d: (builtins.parseDrvName d).name) (builtins.fromJSON ''$chain'');
-        held = builtins.filter (n: pkgs ? \${n} && !(builtins.tryEval pkgs.\${n}.drvPath).success) names;
-      in if held == [ ] then \"\" else builtins.head held" 2>/dev/null)
-    why=$(innermost <<<"$err")
-    if [[ -n $name ]]; then
-      echo "broken $name $why (in $target)"
-    else
-      echo "unattributed $target $why"
-    fi
-  done
-fi
+  if [[ -z $only ]] && has_output nixHoldsTargets; then
+    targets=$(nix eval "${extra[@]}" --json "$flake#nixHoldsTargets.$system" --apply builtins.attrNames) || {
+      echo "cannot evaluate $flake#nixHoldsTargets.$system" >&2
+      exit 1
+    }
+    for target in $(jq -r '.[]' <<<"$targets"); do
+      err=$(nix eval "${extra[@]}" --show-trace --raw "$flake#nixHoldsTargets.$system.\"$target\".target.drvPath" 2>&1 >/dev/null) && continue
+      # The derivations in the trace, innermost first.
+      chain=$(grep -oE "while evaluating derivation '[^']+'" <<<"$err" | cut -d"'" -f2 | tac | jq -Rsc 'split("\n") | map(select(. != ""))')
+      # shellcheck disable=SC2016  # a Nix expression
+      name=$(nix eval "${extra[@]}" --raw "$flake#nixHoldsTargets.$system.\"$target\".pkgs" --apply "pkgs: let
+          names = map (d: (builtins.parseDrvName d).name) (builtins.fromJSON ''$chain'');
+          held = builtins.filter (n: pkgs ? \${n} && !(builtins.tryEval pkgs.\${n}.drvPath).success) names;
+        in if held == [ ] then \"\" else builtins.head held" 2>/dev/null)
+      why=$(innermost <<<"$err")
+      if [[ -n $name ]]; then
+        echo "broken $name $why (in $target)"
+      else
+        echo "unattributed $target $why"
+      fi
+    done
+  fi
 
-echo "ok $(($(jq 'length' <<<"$results") - ${#broken[@]}))"
+  echo "ok $system $(($(jq 'length' <<<"$results") - ${#broken[@]}))"
+}
+
+for system in "${systems[@]}"; do
+  check "$system"
+done
