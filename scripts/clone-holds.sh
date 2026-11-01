@@ -14,7 +14,7 @@ set -euo pipefail
 lock="${FLAKE:-.}/flake.lock"
 # Nested paths (a/b) are walked through the lock, follows included.
 # shellcheck disable=SC2016  # a jq program
-known='. as $lock | def nodeof($segs): reduce $segs[] as $s ("root"; if . == null then null
+known='. as $lock | def nodeof($segs): reduce $segs[] as $s ($lock.root // "root"; if . == null then null
   else ($lock.nodes[.].inputs[$s] // null) | if type == "array" then nodeof(.) else . end end);
   nodeof($i | split("/")) != null'
 if [[ -f $lock ]] && ! jq -e --arg i "$HOLDS_INPUT" "$known" "$lock" >/dev/null; then
