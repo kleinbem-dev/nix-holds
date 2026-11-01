@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- CLI: holds are under `nix-detour hold` (`hold add`, `remove`, `list`,
+  `check`), next to `nix-detour pr`. The old top-level commands say where
+  they went.
+- The release action for holds moved from the repository root to
+  `kleinbem-dev/nix-detour/hold-release`, next to `pr-pin`, `pr-merged` and
+  `update`.
+
 - Renamed from nix-holds to nix-detour: the repository
   (`kleinbem-dev/nix-detour`; the old URLs redirect), the CLI (`nix-detour`),
   the actions' names, and the flake outputs the update action reads:

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# nix-detour: manage the holds file of a flake (held-packages.json).
+# nix-detour: manage a flake's holds (held-packages.json) and PR packages
+# (nixpkgs-prs.json).
 set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: nix-detour <command> [options]
+Usage: nix-detour hold <command> [options]
 
   add NAME --reason TEXT [--link URL] [--from previous|stable|REV]
            [--release-when ATTR] [--tests a,b]
@@ -17,8 +18,6 @@ Usage: nix-detour <command> [options]
   check [--flake REF] [--channel REF]
       Build what ends each hold (the flake's releaseChecks, with the holds
       its mkHolds reads) from the newest nixpkgs; say which holds can go.
-  pr ...
-      Packages from open nixpkgs PRs (see nix-detour pr --help).
 
 Options for every command:
   --file PATH    the holds file (default: held-packages.json)
@@ -32,10 +31,25 @@ die() {
   exit 1
 }
 
-if [[ ${1:-} == pr ]]; then
-  shift
-  exec @prs@ "$@"
-fi
+case "${1:-}" in
+  hold) shift ;;
+  pr)
+    shift
+    exec @prs@ "$@"
+    ;;
+  add | remove | list | check) die "holds are under hold now: nix-detour hold $1 ..." ;;
+  -h | --help | "")
+    cat <<'EOF'
+Usage: nix-detour <hold|pr> <command> [options]
+
+  hold ...   packages held back on an older nixpkgs (nix-detour hold --help)
+  pr ...     packages from open nixpkgs PRs (nix-detour pr --help)
+EOF
+    [[ -n ${1:-} ]] || exit 1
+    exit 0
+    ;;
+  *) die "unknown command $1 (see --help)" ;;
+esac
 
 file=held-packages.json lock=flake.lock input=nixpkgs
 from=previous reason="" link="" release_when="" tests="" flake=. channel=github:NixOS/nixpkgs/nixos-unstable

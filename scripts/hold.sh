@@ -63,7 +63,7 @@ for n in 1 2 3 4 5 6; do
       # Held in this run and still failing.
       failed+=("$name")
       mapfile -t held < <(printf '%s\n' "${held[@]}" | grep -vxF -- "$name" || true)
-      "${cli[@]}" remove "$name" --file "$HOLDS"
+      "${cli[@]}" hold remove "$name" --file "$HOLDS"
     elif $checked && jq -e --arg n "$name" 'has($n)' "$RUNNER_TEMP/holds.before" >/dev/null; then
       failed+=("$name")
     else
@@ -80,7 +80,7 @@ for n in 1 2 3 4 5 6; do
     break
   fi
   for name in "${new[@]}"; do
-    "${cli[@]}" add "$name" --file "$HOLDS" --from "$previous" \
+    "${cli[@]}" hold add "$name" --file "$HOLDS" --from "$previous" \
       --reason "Broken by the lock update: $(reason "$name")"
     held+=("$name")
   done
