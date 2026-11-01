@@ -7,9 +7,10 @@ works, and everything else moves on. Without this, the whole lock update
 stops until the package is fixed. Each hold says why and where the fix is,
 and goes away once the package builds from nixos-unstable again.
 
-It also works the other way round: [packages from open nixpkgs
-PRs](#packages-from-open-nixpkgs-prs) run before the PR lands, and go once
-nixpkgs has them.
+Holds can be added [automatically on a lock
+update](#holding-automatically-on-a-lock-update). It also works the other
+way round: [packages from open nixpkgs PRs](#packages-from-open-nixpkgs-prs)
+run before the PR lands, and go once nixpkgs has them.
 
 An example of it in use:
 [kleinbem/nix-holds-fleet](https://github.com/kleinbem/nix-holds-fleet).
@@ -120,6 +121,40 @@ holds few and short.
 Don't hold packages the standard environment is built from (on darwin, jq
 is one): the darwin stdenv checks that its bootstrap tools come from one
 compiler, and evaluation fails.
+
+## Holding automatically on a lock update
+
+The update action runs on your lock-update PR (from update-flake-lock,
+Renovate or your own workflow). It evaluates each package you use on its
+own, builds the ones no substituter has, and holds every one that fails on
+the nixpkgs from before the update, in the same PR. A package that still
+fails when held is reported instead: that's an error a hold can't fix.
+
+Tell it what you use, from a package set with your overlays and holds:
+
+```nix
+# outputs
+nixHoldsWatch.x86_64-linux = inputs.nix-holds.lib.watch.nixos self.nixosConfigurations.myhost;
+# or: lib.watch.packages { inherit pkgs; packages = [ ... ]; }
+```
+
+`lib.watch.nixos` takes the system packages and the home-manager users'
+`home.packages`. Only top-level packages are watched, since only those can
+be held.
+
+```yaml
+# in the workflow that opens or updates the lock PR, after installing Nix
+- uses: kleinbem-dev/nix-holds/update@<sha>
+  id: holds
+  with:
+    mode: commit          # report (the default) only reports
+    token: ${{ secrets.TOKEN }}   # contents write, for the commit
+```
+
+The holds go to the PR branch as one signed commit; the release action
+removes them again once nixos-unstable has the fix. `held`, `failed` and a
+Markdown `report` are outputs, for a PR comment or an issue. `build: false`
+only evaluates (for big closures such as CUDA, where substituters decide).
 
 ## Packages from open nixpkgs PRs
 

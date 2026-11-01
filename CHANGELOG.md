@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Update action (`kleinbem-dev/nix-holds/update`): on a lock-update PR, finds
+  the watched packages that fail (evaluated one by one, built when no
+  substituter has them) and holds each on the nixpkgs before the update, in
+  the same PR (`mode: commit`) or as a report. Packages that still fail when
+  held are reported, not held.
+- `lib.watch.nixos` and `lib.watch.packages`: the top-level packages a
+  configuration uses, for the update action (`nixHoldsWatch.<system>`).
+
 ## 0.2.0 (2026-11-01)
 
 - Packages from open nixpkgs PRs: `lib.mkPrs { prs }` (or plain
