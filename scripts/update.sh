@@ -34,7 +34,7 @@ while (($#)); do
 done
 
 read -ra extra <<<"${NIX_HOLDS_ARGS:-}"
-tmp=$(mktemp -d)
+tmp=$(mktemp -d) || exit 1
 trap 'rm -rf "$tmp"' EXIT
 native=$(nix eval --raw --impure --expr builtins.currentSystem)
 read -ra systems <<<"${NIX_HOLDS_SYSTEMS:-}"
