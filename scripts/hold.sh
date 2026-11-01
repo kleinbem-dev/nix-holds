@@ -5,13 +5,15 @@
 # lock update. Holds each broken package on the nixpkgs of BASE's flake.lock
 # and runs update.sh again: a package that still fails while held (or was
 # held already) can't be fixed by a hold; a package found only now (the next
-# failure of a target) is held in the next round, up to 5 rounds. Without
-# HOLDS in the repository nothing can be checked: one round, reported as
-# unchecked.
+# failure of a target) is held in the next round, up to 5 rounds. With
+# HOLDS_REPO, the holds file is in that repository: it is cloned, checked
+# through --override-input HOLDS_INPUT, and commit mode opens a PR there.
+# Without the holds file nothing can be checked: one round, unchecked.
 #
 # Environment: FLAKE, HOLDS, INPUT, BASE, MODE (commit|report), BRANCH,
-# BUILD (true|false), NIX_DETOUR_ARGS, GH_TOKEN; RUNNER_TEMP, GITHUB_OUTPUT,
-# GITHUB_STEP_SUMMARY and GITHUB_REPOSITORY as on GitHub.
+# BUILD (true|false), NIX_DETOUR_ARGS, GH_TOKEN, HOLDS_REPO, HOLDS_INPUT,
+# HOLDS_TOKEN; RUNNER_TEMP, GITHUB_OUTPUT, GITHUB_STEP_SUMMARY and
+# GITHUB_REPOSITORY as on GitHub.
 set -euo pipefail
 
 here=$(dirname "$(realpath "$0")")
@@ -34,6 +36,23 @@ has() {
   shift
   printf '%s\n' "$@" | grep -qxF -- "$name"
 }
+
+holds_repo="${HOLDS_REPO:-}"
+if [[ -n $holds_repo ]]; then
+  [[ -n ${HOLDS_INPUT:-} ]] || { echo "holds-repo needs holds-input (its flake input here)" >&2; exit 1; }
+  clone="$RUNNER_TEMP/holds-repo"
+  rm -rf "$clone"
+  if [[ -d $holds_repo ]]; then
+    # A local repository (for testing).
+    git clone -q "$holds_repo" "$clone"
+  else
+    GH_TOKEN="${HOLDS_TOKEN:-${GH_TOKEN:-}}" gh repo clone "$holds_repo" "$clone" -- --depth 1 -q
+  fi
+  holds_file="$HOLDS"
+  HOLDS="$clone/$holds_file"
+  # Every check from here on sees the edited holds file.
+  export NIX_DETOUR_ARGS="${NIX_DETOUR_ARGS:-} --override-input $HOLDS_INPUT path:$clone"
+fi
 
 held=() failed=() unchecked=()
 checked=false
@@ -82,13 +101,6 @@ for n in 1 2 3 4 5 6; do
 done
 mapfile -t unattributed < <(awk '$1 == "unattributed" {print $2}' "$round" | sort -u)
 
-if $checked; then
-  if [[ $MODE == commit ]] && ((${#held[@]})); then
-    "$here/commit-signed.sh" "$BRANCH" "chore: hold ${held[*]}" "$HOLDS"
-  else
-    cp "$RUNNER_TEMP/holds.before" "$HOLDS"
-  fi
-fi
 
 line() {
   echo "- \`$1\`: $(reason "$1")"
@@ -108,7 +120,7 @@ line() {
     if $checked; then
       echo "To hold, not checked yet (more than 5 rounds):"
     else
-      echo "To hold on nixpkgs ${previous:0:12} (not checked: $HOLDS isn't in this repository):"
+      echo "To hold on nixpkgs ${previous:0:12} (not checked: no holds file at $HOLDS):"
     fi
     echo
     for name in "${unchecked[@]}"; do line "$name"; done
@@ -131,6 +143,22 @@ line() {
   ((${#held[@]} + ${#unchecked[@]} + ${#failed[@]} + ${#unattributed[@]})) || echo "Nothing fails."
 } >"$RUNNER_TEMP/report.md"
 cat "$RUNNER_TEMP/report.md" >>"$GITHUB_STEP_SUMMARY"
+
+if $checked; then
+  if [[ $MODE == commit ]] && ((${#held[@]})); then
+    if [[ -n $holds_repo ]]; then
+      body="$(cat "$RUNNER_TEMP/report.md")
+
+Found by the nix-detour update action on ${GITHUB_REPOSITORY:-the lock update}."
+      (cd "$clone" && GITHUB_REPOSITORY="$holds_repo" GH_TOKEN="${HOLDS_TOKEN:-$GH_TOKEN}" \
+        "$here/open-signed-pr.sh" nix-detour/holds "chore: hold ${held[*]}" "$body" "$holds_file")
+    else
+      "$here/commit-signed.sh" "$BRANCH" "chore: hold ${held[*]}" "$HOLDS"
+    fi
+  else
+    cp "$RUNNER_TEMP/holds.before" "$HOLDS"
+  fi
+fi
 {
   # In report mode, "held" means "to hold".
   if [[ $MODE == commit ]]; then echo "held=${held[*]}"; else echo "held=$(echo "${held[*]} ${unchecked[*]}" | xargs)"; fi

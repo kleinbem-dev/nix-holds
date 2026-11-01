@@ -173,9 +173,22 @@ only evaluates (for big closures such as CUDA, where substituters decide);
 `directory` and `nix-args` cover a checkout in a subfolder and flakes that
 need `--override-input`; `systems: x86_64-linux aarch64-linux` checks other
 systems' hosts from the same runner (evaluation only, builds need the
-runner's system). Without the holds file in the repository (holds
-kept in another flake), the action can't check its holds and reports the
-first round only.
+runner's system).
+
+Holds kept in another repository (one list shared by several flakes):
+
+```yaml
+- uses: kleinbem-dev/nix-detour/update@<sha>
+  with:
+    holds-repo: you/fleet-holds   # where held-packages.json is
+    holds-input: fleet-holds      # the flake input that brings it in here
+    mode: commit
+    holds-token: ${{ secrets.TOKEN }}   # contents + PR write there
+```
+
+The action clones that repository, holds there, checks through
+`--override-input` with the edited copy, and in commit mode opens a PR in it.
+Once that merges and your lock moves to it, the update goes through.
 
 ## Packages from open nixpkgs PRs
 
