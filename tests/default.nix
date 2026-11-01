@@ -397,6 +397,22 @@ in
         touch $out
       '';
 
+  # The fix's patch applies and the package builds with it.
+  fix-builds = fixedPkgs.hello;
+
+  # A patch on top of patches an earlier overlay set to null.
+  fix-null-patches =
+    let
+      nulled = import nixpkgs {
+        inherit system;
+        overlays = [
+          (_: prev: { hello = prev.hello.overrideAttrs { patches = null; }; })
+          fixes.overlay
+        ];
+      };
+    in
+    pkgs.writeText "fix-null-patches" (builtins.toJSON (map baseNameOf nulled.hello.patches));
+
   mk-holds =
     if failed == [ ] then
       pkgs.writeText "mk-holds-tests" "ok"

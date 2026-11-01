@@ -92,7 +92,8 @@ let
           package
         else
           package.overrideAttrs (old: {
-            patches = (old.patches or [ ]) ++ map patch entry.patches;
+            # An earlier overlay may have set patches to null.
+            patches = lib.optionals (old.patches or null != null) old.patches ++ map patch entry.patches;
           });
     in
     if entry ? override then
