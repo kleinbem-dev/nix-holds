@@ -34,9 +34,13 @@ if [[ -d $HOLDS_REPO ]]; then
   git clone -q "$HOLDS_REPO" "$clone"
   [[ -z $rev ]] || git -C "$clone" checkout -q "$rev"
 else
-  GH_TOKEN="${HOLDS_TOKEN:-${GH_TOKEN:-}}" gh repo clone "$HOLDS_REPO" "$clone" -- --depth 1 -q
+  export GH_TOKEN="${HOLDS_TOKEN:-${GH_TOKEN:-}}"
+  gh repo clone "$HOLDS_REPO" "$clone" -- --depth 1 -q
   if [[ -n $rev ]]; then
-    git -C "$clone" fetch -q --depth 1 origin "$rev"
+    # gh's credentials only reach its own clone; the fetch gets them too, for
+    # a private holds repository.
+    git -C "$clone" -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
+      fetch -q --depth 1 origin "$rev"
     git -C "$clone" checkout -q FETCH_HEAD
   fi
 fi
