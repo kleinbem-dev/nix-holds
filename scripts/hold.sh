@@ -22,8 +22,9 @@ cli=(nix run "path:$here/.." --)
 args=()
 [[ $BUILD == true ]] || args+=(--no-build)
 
-git fetch --depth 1 origin "$BASE" 2>/dev/null
-previous=$(git show FETCH_HEAD:flake.lock | jq -r --arg i "$INPUT" '.nodes[.nodes.root.inputs[$i]].locked.rev')
+git fetch -q --depth 1 origin "$BASE" || { echo "cannot fetch $BASE from origin (is this a git checkout of the repository?)" >&2; exit 1; }
+previous=$(git show FETCH_HEAD:flake.lock | jq -er --arg i "$INPUT" '.nodes[.nodes.root.inputs[$i]].locked.rev') \
+  || { echo "no input $INPUT in $BASE's flake.lock" >&2; exit 1; }
 
 all="$RUNNER_TEMP/all.txt"
 cp "$results" "$all"
