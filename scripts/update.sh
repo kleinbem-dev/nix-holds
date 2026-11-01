@@ -34,6 +34,8 @@ while (($#)); do
 done
 
 read -ra extra <<<"${NIX_HOLDS_ARGS:-}"
+tmp=$(mktemp -d) || exit 1
+trap 'rm -rf "$tmp"' EXIT
 native=$(nix eval --raw --impure --expr builtins.currentSystem)
 read -ra systems <<<"${NIX_HOLDS_SYSTEMS:-}"
 ((${#systems[@]})) || systems=("$native")
@@ -77,9 +79,11 @@ check() {
       let r = builtins.tryEval (builtins.seq p.drvPath p.outPath); in
       if r.success then { drv = p.drvPath; out = r.value; } else null) (($filter) ws)" 2>/dev/null)
     if [[ -z $results ]]; then
-      names=$(nix eval "${extra[@]}" --json "$watch" --apply "ws: builtins.attrNames (($filter) ws)") || {
-        echo "cannot evaluate $watch" >&2
-        exit 1
+      # A watch list that can't even be listed (say, a host's package list
+      # names a removed attribute) is reported; the targets still run.
+      names=$(nix eval "${extra[@]}" --json "$watch" --apply "ws: builtins.attrNames (($filter) ws)" 2>"$tmp/err") || {
+        echo "unattributed nixHoldsWatch.$system $(innermost <"$tmp/err")"
+        names='[]'
       }
       results='{}'
       mapfile -t list < <(jq -r '.[]' <<<"$names")
@@ -119,9 +123,9 @@ check() {
   fi
 
   if [[ -z $only ]] && has_output nixHoldsTargets; then
-    targets=$(nix eval "${extra[@]}" --json "$flake#nixHoldsTargets.$system" --apply builtins.attrNames) || {
-      echo "cannot evaluate $flake#nixHoldsTargets.$system" >&2
-      exit 1
+    targets=$(nix eval "${extra[@]}" --json "$flake#nixHoldsTargets.$system" --apply builtins.attrNames 2>"$tmp/err") || {
+      echo "unattributed nixHoldsTargets.$system $(innermost <"$tmp/err")"
+      targets='[]'
     }
     mapfile -t list < <(jq -r '.[]' <<<"$targets")
     for target in "${list[@]}"; do
