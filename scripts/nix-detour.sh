@@ -45,7 +45,7 @@ Usage: nix-detour <hold|pr> <command> [options]
   hold ...   packages held back on an older nixpkgs (nix-detour hold --help)
   pr ...     packages from open nixpkgs PRs (nix-detour pr --help)
 EOF
-    [[ -n ${1:-} ]] || exit 1
+    [[ -n "${1:-}" ]] || exit 1
     exit 0
     ;;
   *) die "unknown command $1 (see --help)" ;;
