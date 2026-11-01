@@ -161,18 +161,20 @@ prs = ./nixpkgs-prs.json; }` gives the same.
 
 ```sh
 nix run github:kleinbem-dev/nix-holds -- pr add mesh-llm --pr 571722 \
-  --repo you/nixpkgs --attrs mesh-llm,skippy \
+  --repo you/nixpkgs --attrs mesh-llm,skippy --rev <full sha> \
   --module mesh-llm=nixos/modules/services/misc/mesh-llm.nix
-nix run github:kleinbem-dev/nix-holds -- pr pin mesh-llm <full sha>
+nix run github:kleinbem-dev/nix-holds -- pr pin mesh-llm <newer full sha>
 nix run github:kleinbem-dev/nix-holds -- pr list
 nix run github:kleinbem-dev/nix-holds -- pr merged   # which entries can go
 ```
 
 Lifecycle:
 
-1. **Add** an entry with `nix-holds pr add`.
-2. **Pin** a commit whose packages build (nixpkgs-review), by hand or with
-   the pin action, which evaluates the packages and opens the PR:
+1. **Add** an entry with `nix-holds pr add ... --rev <sha>`, pinned to a
+   commit whose packages build (nixpkgs-review). An entry without a pin
+   doesn't evaluate, so don't commit one.
+2. **Pin** a newer commit of the PR later, by hand or with the pin action,
+   which evaluates the packages and opens the PR:
    `uses: kleinbem-dev/nix-holds/pr-pin@<sha>` with `token`, `name` and
    `rev`. Lock updates never move a pin, so nothing new runs unless you
    pinned it.
