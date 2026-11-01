@@ -163,7 +163,7 @@ prs = ./nixpkgs-prs.json; }` gives the same.
 nix run github:kleinbem-dev/nix-holds -- pr add mesh-llm --pr 571722 \
   --repo you/nixpkgs --attrs mesh-llm,skippy --rev <full sha> \
   --module mesh-llm=nixos/modules/services/misc/mesh-llm.nix
-nix run github:kleinbem-dev/nix-holds -- pr pin mesh-llm <newer sha>
+nix run github:kleinbem-dev/nix-holds -- pr pin mesh-llm <newer full sha>
 nix run github:kleinbem-dev/nix-holds -- pr list
 nix run github:kleinbem-dev/nix-holds -- pr merged   # which entries can go
 ```
