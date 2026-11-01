@@ -3,13 +3,18 @@
 ## Unreleased
 
 - Update action (`kleinbem-dev/nix-holds/update`): on a lock-update PR,
-  finds the watched packages that fail (evaluated one by one, built when no
-  substituter has them) and holds each on the nixpkgs before the update, in
-  the same PR (`mode: commit`) or as a report. Packages that still fail when
-  held are reported, not held. `directory` and `nix-args` cover a checkout
-  in a subfolder and flakes that need `--override-input`.
-- `lib.watch.nixos` and `lib.watch.packages`: the top-level packages a
-  configuration uses, for the update action (`nixHoldsWatch.<system>`).
+  finds what the update broke and holds each package on the nixpkgs before
+  the update, in the same PR (`mode: commit`) or as a report. It checks
+  again after each round: what still fails held is reported, not held; a
+  failure that shows up only then is held next round (up to 5).
+  `directory` and `nix-args` cover a checkout in a subfolder and flakes
+  that need `--override-input`.
+- `lib.watch.target`: a NixOS host as a target (`nixHoldsTargets`); on
+  failure the package to hold is found in the error's trace, however the
+  host reaches it.
+- `lib.watch.nixos` and `lib.watch.packages`: watched packages
+  (`nixHoldsWatch`), each evaluated on its own and built when no
+  substituter has it.
 
 ## 0.2.0 (2026-11-01)
 

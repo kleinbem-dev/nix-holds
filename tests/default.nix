@@ -217,6 +217,23 @@ let
         "hello"
       ];
     };
+    testWatchTarget = {
+      expr =
+        let
+          t = watch.target {
+            pkgs = brokenPkgs;
+            config.system.build.toplevel = brokenPkgs.hello;
+          };
+        in
+        [
+          (t.pkgs.figlet.meta.broken)
+          (t.target.outPath == brokenPkgs.hello.outPath)
+        ];
+      expected = [
+        true
+        true
+      ];
+    };
     testPrModuleArgs = {
       expr = lib.functionArgs prs.nixosModules.fake;
       expected = {

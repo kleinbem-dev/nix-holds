@@ -38,6 +38,15 @@ in
 {
   inherit packages;
 
+  # A NixOS configuration as a target (nixHoldsTargets): when its toplevel
+  # fails to evaluate, the package to hold is found from the error's trace,
+  # among the attributes of its package set. Catches packages reached any way
+  # (services, config files), not only installed ones.
+  target = system: {
+    target = system.config.system.build.toplevel;
+    inherit (system) pkgs;
+  };
+
   # The system packages of a NixOS configuration (lib.nixosSystem's result),
   # plus the home.packages of its home-manager users, if any.
   nixos =

@@ -1,9 +1,10 @@
 name: nix-holds update
 description: >-
-  Run it on a lock-update PR: finds the watched packages the update broke and
-  holds each on the nixpkgs before the update, so the rest of the update goes
-  through. A package that fails on that nixpkgs too can't be held and is
-  reported instead. Run it after installing Nix, from a checkout of the PR.
+  Run it on a lock-update PR: finds the packages the update broke (watched
+  packages one by one, targets through their error traces) and holds each on
+  the nixpkgs before the update, so the rest of the update goes through. A
+  package that still fails held is reported instead. Run it after installing
+  Nix, from a checkout of the PR.
 inputs:
   token:
     description: Token that commits to the PR branch (contents write); only needed with mode commit
@@ -15,7 +16,7 @@ inputs:
     description: The repository checkout to work in
     default: .
   flake:
-    description: Flake with nixHoldsWatch.<system> (from lib.watch), relative to directory
+    description: Flake with nixHoldsWatch.<system> and/or nixHoldsTargets.<system> (from lib.watch), relative to directory
     default: .
   nix-args:
     description: Extra arguments for every nix eval and build of the flake, such as --override-input (split on spaces)
@@ -75,84 +76,4 @@ runs:
         BASE: ${{ inputs.base }}
         BRANCH: ${{ inputs.branch || github.head_ref || github.ref_name }}
         BUILD: ${{ inputs.build }}
-      run: |
-        set -euo pipefail
-        mapfile -t names < <(awk '$1 == "broken" {print $2}' "$RUNNER_TEMP/update.txt" | sort -u)
-        held=() failed=()
-        git fetch --depth 1 origin "$BASE" 2>/dev/null
-        previous=$(git show FETCH_HEAD:flake.lock | jq -r --arg i "$INPUT" '.nodes[.nodes.root.inputs[$i]].locked.rev')
-        cli=(nix run "path:$GITHUB_ACTION_PATH/.." --)
-
-        # A package that is held already and still fails needs a person.
-        if [[ -e $HOLDS ]]; then
-          fresh=()
-          for name in "${names[@]}"; do
-            if jq -e --arg n "$name" 'has($n)' "$HOLDS" >/dev/null; then failed+=("$name"); else fresh+=("$name"); fi
-          done
-          names=("${fresh[@]}")
-        fi
-
-        if ((${#names[@]})) && [[ -e $HOLDS ]]; then
-          cp "$HOLDS" "$RUNNER_TEMP/holds.before"
-          for name in "${names[@]}"; do
-            reason=$(awk -v n="$name" '$1 == "broken" && $2 == n {$1 = $2 = ""; sub(/^ +/, ""); print; exit}' "$RUNNER_TEMP/update.txt")
-            "${cli[@]}" add "$name" --file "$HOLDS" --from "$previous" \
-              --reason "Broken by the lock update: ${reason:-fails}"
-          done
-          # Held on the previous nixpkgs, what still fails is no hold's to fix.
-          args=(--only "$(IFS=,; echo "${names[*]}")")
-          [[ $BUILD == true ]] || args+=(--no-build)
-          mapfile -t still < <("$GITHUB_ACTION_PATH/../scripts/update.sh" "$FLAKE" "${args[@]}" | awk '$1 == "broken" {print $2}')
-          for name in "${names[@]}"; do
-            if printf '%s\n' "${still[@]}" | grep -qxF "$name"; then
-              failed+=("$name")
-              "${cli[@]}" remove "$name" --file "$HOLDS"
-            else
-              held+=("$name")
-            fi
-          done
-          if [[ $MODE == commit && ${#held[@]} -gt 0 ]]; then
-            "$GITHUB_ACTION_PATH/../scripts/commit-signed.sh" "$BRANCH" "chore: hold ${held[*]}" "$HOLDS"
-          else
-            cp "$RUNNER_TEMP/holds.before" "$HOLDS"
-          fi
-          checked=true
-        else
-          held=("${names[@]}")
-          checked=false
-        fi
-
-        {
-          if ((${#held[@]})); then
-            if [[ $MODE == commit && $checked == true ]]; then
-              echo "Held on nixpkgs ${previous:0:12}, the one before this update:"
-            elif [[ $checked == true ]]; then
-              echo "To hold on nixpkgs ${previous:0:12} (they work there):"
-            else
-              echo "To hold on nixpkgs ${previous:0:12} (not checked: $HOLDS isn't in this repository):"
-            fi
-            echo
-            for name in "${held[@]}"; do
-              reason=$(awk -v n="$name" '$1 == "broken" && $2 == n {$1 = $2 = ""; sub(/^ +/, ""); print; exit}' "$RUNNER_TEMP/update.txt")
-              echo "- \`$name\`: $reason"
-            done
-          fi
-          if ((${#failed[@]})); then
-            ((${#held[@]})) && echo
-            echo "Still fail when held (on nixpkgs ${previous:0:12}, or held already), so a hold doesn't help:"
-            echo
-            for name in "${failed[@]}"; do
-              reason=$(awk -v n="$name" '$1 == "broken" && $2 == n {$1 = $2 = ""; sub(/^ +/, ""); print; exit}' "$RUNNER_TEMP/update.txt")
-              echo "- \`$name\`: $reason"
-            done
-          fi
-          ((${#held[@]} + ${#failed[@]})) || echo "Every watched package evaluates and builds."
-        } > "$RUNNER_TEMP/report.md"
-        cat "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
-        {
-          echo "held=${held[*]}"
-          echo "failed=${failed[*]}"
-          echo "report<<NIX_HOLDS_REPORT"
-          cat "$RUNNER_TEMP/report.md"
-          echo "NIX_HOLDS_REPORT"
-        } >> "$GITHUB_OUTPUT"
+      run: '"$GITHUB_ACTION_PATH/../scripts/hold.sh" "$RUNNER_TEMP/update.txt"'

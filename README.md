@@ -125,22 +125,30 @@ compiler, and evaluation fails.
 ## Holding automatically on a lock update
 
 The update action runs on your lock-update PR (from update-flake-lock,
-Renovate or your own workflow). It evaluates each package you use on its
-own, builds the ones no substituter has, and holds every one that fails on
-the nixpkgs from before the update, in the same PR. A package that still
-fails when held is reported instead: that's an error a hold can't fix.
+Renovate or your own workflow). It finds what the update broke and holds
+each package on the nixpkgs from before the update, in the same PR. Then it
+checks again: a package that still fails held is reported instead (an error
+a hold can't fix), and a failure that shows up only now is held in the next
+round.
 
-Tell it what you use, from a package set with your overlays and holds:
+Tell it what you use, from package sets with your overlays and holds. Two
+kinds, use either or both:
 
 ```nix
 # outputs
+# Targets: a NixOS host's toplevel. On failure, the package to hold is found
+# in the error's trace, so packages reached any way count (services, config
+# files, plugins). One per round.
+nixHoldsTargets.x86_64-linux.myhost = inputs.nix-holds.lib.watch.target self.nixosConfigurations.myhost;
+# Watched packages: each evaluated on its own, and built when no substituter
+# has it. lib.watch.nixos takes a host's system packages and its home-manager
+# users' home.packages.
 nixHoldsWatch.x86_64-linux = inputs.nix-holds.lib.watch.nixos self.nixosConfigurations.myhost;
 # or: lib.watch.packages { inherit pkgs; packages = [ ... ]; }
 ```
 
-`lib.watch.nixos` takes the system packages and the home-manager users'
-`home.packages`. Only top-level packages are watched, since only those can
-be held.
+Only top-level packages can be held, so only those are found. Targets are
+evaluated, not built.
 
 ```yaml
 # in the workflow that opens or updates the lock PR, after installing Nix
@@ -154,7 +162,11 @@ be held.
 The holds go to the PR branch as one signed commit; the release action
 removes them again once nixos-unstable has the fix. `held`, `failed` and a
 Markdown `report` are outputs, for a PR comment or an issue. `build: false`
-only evaluates (for big closures such as CUDA, where substituters decide).
+only evaluates (for big closures such as CUDA, where substituters decide);
+`directory` and `nix-args` cover a checkout in a subfolder and flakes that
+need `--override-input`. Without the holds file in the repository (holds
+kept in another flake), the action can't check its holds and reports the
+first round only.
 
 ## Packages from open nixpkgs PRs
 
