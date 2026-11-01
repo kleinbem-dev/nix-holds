@@ -68,10 +68,21 @@ has_output() {
 
 # Checks one system; $system is the one.
 check() {
-  local system="$1" results broken watch targets target err chain name why list
+  local system="$1" results broken watch targets target err chain name why list watchOut targetsOut
   results='{}' broken=()
-  watch="$flake#nixDetourWatch.$system"
-  if has_output nixDetourWatch; then
+  # The outputs were named nixHoldsWatch/nixHoldsTargets before nix-holds
+  # became nix-detour; the old names still work.
+  watchOut=nixDetourWatch targetsOut=nixDetourTargets
+  if ! has_output nixDetourWatch && has_output nixHoldsWatch; then
+    echo "nixHoldsWatch is now nixDetourWatch; rename the output" >&2
+    watchOut=nixHoldsWatch
+  fi
+  if ! has_output nixDetourTargets && has_output nixHoldsTargets; then
+    echo "nixHoldsTargets is now nixDetourTargets; rename the output" >&2
+    targetsOut=nixHoldsTargets
+  fi
+  watch="$flake#$watchOut.$system"
+  if has_output "$watchOut"; then
     # name -> { drv, out } or null when it doesn't evaluate. tryEval catches
     # throws (broken, unfree, insecure, removed aliases); other errors fail the
     # whole evaluation, and then each name is evaluated on its own.
@@ -82,7 +93,7 @@ check() {
       # A watch list that can't even be listed (say, a host's package list
       # names a removed attribute) is reported; the targets still run.
       names=$(nix eval "${extra[@]}" --json "$watch" --apply "ws: builtins.attrNames (($filter) ws)" 2>"$tmp/err") || {
-        echo "unattributed nixDetourWatch.$system $(innermost <"$tmp/err")"
+        echo "unattributed $watchOut.$system $(innermost <"$tmp/err")"
         names='[]'
       }
       results='{}'
@@ -122,18 +133,18 @@ check() {
     fi
   fi
 
-  if [[ -z $only ]] && has_output nixDetourTargets; then
-    targets=$(nix eval "${extra[@]}" --json "$flake#nixDetourTargets.$system" --apply builtins.attrNames 2>"$tmp/err") || {
-      echo "unattributed nixDetourTargets.$system $(innermost <"$tmp/err")"
+  if [[ -z $only ]] && has_output "$targetsOut"; then
+    targets=$(nix eval "${extra[@]}" --json "$flake#$targetsOut.$system" --apply builtins.attrNames 2>"$tmp/err") || {
+      echo "unattributed $targetsOut.$system $(innermost <"$tmp/err")"
       targets='[]'
     }
     mapfile -t list < <(jq -r '.[]' <<<"$targets")
     for target in "${list[@]}"; do
-      err=$(nix eval "${extra[@]}" --show-trace --raw "$flake#nixDetourTargets.$system.\"$target\".target.drvPath" 2>&1 >/dev/null) && continue
+      err=$(nix eval "${extra[@]}" --show-trace --raw "$flake#$targetsOut.$system.\"$target\".target.drvPath" 2>&1 >/dev/null) && continue
       # The derivations in the trace, innermost first.
       chain=$(grep -oE "while evaluating derivation '[^']+'" <<<"$err" | cut -d"'" -f2 | tac | jq -Rsc 'split("\n") | map(select(. != ""))')
       # shellcheck disable=SC2016  # a Nix expression
-      name=$(nix eval "${extra[@]}" --raw "$flake#nixDetourTargets.$system.\"$target\".pkgs" --apply "pkgs: let
+      name=$(nix eval "${extra[@]}" --raw "$flake#$targetsOut.$system.\"$target\".pkgs" --apply "pkgs: let
           names = map (d: (builtins.parseDrvName d).name) (builtins.fromJSON ''$chain'');
           held = builtins.filter (n: pkgs ? \${n} && !(builtins.tryEval pkgs.\${n}.drvPath).success) names;
         in if held == [ ] then \"\" else builtins.head held" 2>/dev/null)

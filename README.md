@@ -15,7 +15,9 @@ once nixpkgs catches up:
 Each detour says why and where the fix is, and goes away once nixpkgs has
 it: the release action and the pr-merged action open the PRs that end them.
 
-(Renamed from nix-holds on 2026-11-01; the old URLs redirect.)
+(Renamed from nix-holds on 2026-11-01. Web, git and flake URLs redirect,
+but GitHub Actions' `uses:` doesn't: change `kleinbem-dev/nix-holds` to
+`kleinbem-dev/nix-detour` in your workflows.)
 
 An example of it in use:
 [kleinbem/nix-holds-fleet](https://github.com/kleinbem/nix-holds-fleet).
