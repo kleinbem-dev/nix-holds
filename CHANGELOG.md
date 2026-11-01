@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.1 (2026-11-01)
 
 - Update action with `holds-repo`: the holds repository is cloned at the
   revision the flake's lock has for `holds-input`, so the checks see the
