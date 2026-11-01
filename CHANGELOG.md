@@ -8,7 +8,8 @@
   again after each round: what still fails held is reported, not held; a
   failure that shows up only then is held next round (up to 5).
   `directory` and `nix-args` cover a checkout in a subfolder and flakes
-  that need `--override-input`.
+  that need `--override-input`; `systems` checks other systems' hosts from
+  the same runner (evaluation only).
 - `lib.watch.target`: a NixOS host as a target (`nixHoldsTargets`); on
   failure the package to hold is found in the error's trace, however the
   host reaches it.

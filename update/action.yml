@@ -33,6 +33,9 @@ inputs:
   branch:
     description: "The PR branch to commit to (default: the PR's head branch)"
     default: ""
+  systems:
+    description: The systems to check, separated by spaces (default the runner's); any system evaluates, only the runner's builds
+    default: ""
   build:
     description: Build the watched packages no substituter has ("false" only evaluates)
     default: "true"
@@ -54,6 +57,7 @@ runs:
       working-directory: ${{ inputs.directory }}
       env:
         NIX_HOLDS_ARGS: ${{ inputs.nix-args }}
+        NIX_HOLDS_SYSTEMS: ${{ inputs.systems }}
         FLAKE: ${{ inputs.flake }}
         BUILD: ${{ inputs.build }}
       run: |
@@ -68,6 +72,7 @@ runs:
       working-directory: ${{ inputs.directory }}
       env:
         NIX_HOLDS_ARGS: ${{ inputs.nix-args }}
+        NIX_HOLDS_SYSTEMS: ${{ inputs.systems }}
         GH_TOKEN: ${{ inputs.token }}
         MODE: ${{ inputs.mode }}
         FLAKE: ${{ inputs.flake }}
