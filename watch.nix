@@ -25,12 +25,15 @@ let
           ours = try p.outPath;
           theirs = try pkgs.${name}.outPath;
         in
-        if ours.success && theirs.success then ours.value == theirs.value else !ours.success && !theirs.success;
+        if ours.success && theirs.success then
+          ours.value == theirs.value
+        else
+          !ours.success && !theirs.success;
       watched = lib.filter (name: name != null && pkgs ? ${name}) (map nameOf packages);
     in
-    lib.genAttrs (lib.filter (name: lib.any (p: nameOf p == name && same p name) packages) (lib.unique watched)) (
-      name: pkgs.${name}
-    );
+    lib.genAttrs (lib.filter (name: lib.any (p: nameOf p == name && same p name) packages) (
+      lib.unique watched
+    )) (name: pkgs.${name});
 in
 {
   inherit packages;
@@ -41,7 +44,9 @@ in
     system:
     let
       inherit (system) config pkgs;
-      home = lib.concatMap (user: user.home.packages or [ ]) (lib.attrValues (config.home-manager.users or { }));
+      home = lib.concatMap (user: user.home.packages or [ ]) (
+        lib.attrValues (config.home-manager.users or { })
+      );
     in
     packages {
       inherit pkgs;
