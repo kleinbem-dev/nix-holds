@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (2026-11-01)
 
 - Packages from open nixpkgs PRs: `lib.mkPrs { prs }` (or plain
   `import ./prs.nix`) builds the packages and NixOS modules of the PRs in a

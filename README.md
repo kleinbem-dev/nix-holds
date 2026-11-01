@@ -87,7 +87,7 @@ hold, and `check` runs the release checks locally. `--file`, `--lock` and
 ## Lifecycle
 
 1. **Hold:** `nix-holds add` in a PR, with the reason and the upstream link.
-2. **Release:** the release action (`uses: kleinbem-dev/nix-holds@<sha> # v0.1.0`,
+2. **Release:** the release action (`uses: kleinbem-dev/nix-holds@<sha> # v0.2.0`,
    after installing Nix) builds each release check from nixos-unstable and
    opens a PR removing the hold once it builds. Its `stale` output lists the holds
    older than 14 days, for your own alert. A consumer whose nixpkgs is older
@@ -175,10 +175,10 @@ Lifecycle:
    doesn't evaluate, so don't commit one.
 2. **Pin** a newer commit of the PR later, by hand or with the pin action,
    which evaluates the packages and opens the PR:
-   `uses: kleinbem-dev/nix-holds/pr-pin@<sha>` with `token`, `name` and
+   `uses: kleinbem-dev/nix-holds/pr-pin@<sha> # v0.2.0` with `token`, `name` and
    `rev`. Lock updates never move a pin, so nothing new runs unless you
    pinned it.
-3. **Remove:** `uses: kleinbem-dev/nix-holds/pr-merged@<sha>` with `token`,
+3. **Remove:** `uses: kleinbem-dev/nix-holds/pr-merged@<sha> # v0.2.0` with `token`,
    on a schedule, opens a PR removing each entry your flake's nixpkgs has
    caught up with. An entry with modules gets a draft: switch to nixpkgs'
    own module first, then mark it ready.
