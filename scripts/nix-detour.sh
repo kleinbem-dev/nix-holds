@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# nix-holds: manage the holds file of a flake (held-packages.json).
+# nix-detour: manage the holds file of a flake (held-packages.json).
 set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: nix-holds <command> [options]
+Usage: nix-detour <command> [options]
 
   add NAME --reason TEXT [--link URL] [--from previous|stable|REV]
            [--release-when ATTR] [--tests a,b]
@@ -18,7 +18,7 @@ Usage: nix-holds <command> [options]
       Build what ends each hold (the flake's releaseChecks, with the holds
       its mkHolds reads) from the newest nixpkgs; say which holds can go.
   pr ...
-      Packages from open nixpkgs PRs (see nix-holds pr --help).
+      Packages from open nixpkgs PRs (see nix-detour pr --help).
 
 Options for every command:
   --file PATH    the holds file (default: held-packages.json)
@@ -28,7 +28,7 @@ EOF
 }
 
 die() {
-  echo "nix-holds: $*" >&2
+  echo "nix-detour: $*" >&2
   exit 1
 }
 

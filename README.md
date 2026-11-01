@@ -1,16 +1,23 @@
-# nix-holds
+# nix-detour
 
-Hold packages back from nixos-unstable while they're broken there.
+Single packages take a detour from your nixpkgs, and come back on their own
+once nixpkgs catches up:
 
-When one package breaks in nixos-unstable, it stays on a nixpkgs where it
-works, and everything else moves on. Without this, the whole lock update
-stops until the package is fixed. Each hold says why and where the fix is,
-and goes away once the package builds from nixos-unstable again.
+- **Hold:** a package that broke in nixos-unstable stays on a nixpkgs where
+  it works, and everything else moves on. Without this, the whole lock
+  update stops until the package is fixed. The [update
+  action](#holding-automatically-on-a-lock-update) adds holds by itself when
+  a lock update breaks something.
+- **Ahead:** a package that only exists on an open nixpkgs PR (often your
+  own) runs from that PR, pinned, [before it
+  lands](#packages-from-open-nixpkgs-prs).
 
-Holds can be added [automatically on a lock
-update](#holding-automatically-on-a-lock-update). It also works the other
-way round: [packages from open nixpkgs PRs](#packages-from-open-nixpkgs-prs)
-run before the PR lands, and go once nixpkgs has them.
+Each detour says why and where the fix is, and goes away once nixpkgs has
+it: the release action and the pr-merged action open the PRs that end them.
+
+(Renamed from nix-holds on 2026-11-01. Web, git and flake URLs redirect,
+but GitHub Actions' `uses:` doesn't: change `kleinbem-dev/nix-holds` to
+`kleinbem-dev/nix-detour` in your workflows.)
 
 An example of it in use:
 [kleinbem/nix-holds-fleet](https://github.com/kleinbem/nix-holds-fleet).
@@ -35,15 +42,15 @@ Packages a consumer's package set doesn't have are left out.
 Keep your holds in your own repo, in a `held-packages.json` as above:
 
 ```nix
-inputs.nix-holds = {
-  url = "github:kleinbem-dev/nix-holds";
+inputs.nix-detour = {
+  url = "github:kleinbem-dev/nix-detour";
   inputs.nixpkgs.follows = "nixpkgs";
   inputs.nixpkgs-stable.follows = "nixpkgs-stable";
 };
 
 # outputs
 let
-  holds = inputs.nix-holds.lib.mkHolds {
+  holds = inputs.nix-detour.lib.mkHolds {
     holds = ./held-packages.json;
     inherit (inputs) nixpkgs-stable;
     # Your own package overlays, so your packages can be held too.
@@ -71,12 +78,12 @@ yourself.
 ## The CLI
 
 ```sh
-nix run github:kleinbem-dev/nix-holds -- add open-webui \
+nix run github:kleinbem-dev/nix-detour -- add open-webui \
   --reason "chromadb needs posthog, broken since mcp 2" \
   --link https://github.com/NixOS/nixpkgs/pull/578265 \
   --release-when python3Packages.posthog
-nix run github:kleinbem-dev/nix-holds -- list
-nix run github:kleinbem-dev/nix-holds -- check   # which holds can go
+nix run github:kleinbem-dev/nix-detour -- list
+nix run github:kleinbem-dev/nix-detour -- check   # which holds can go
 ```
 
 `add` holds a package on the nixpkgs your `flake.lock` had before its last
@@ -87,8 +94,8 @@ hold, and `check` runs the release checks locally. `--file`, `--lock` and
 
 ## Lifecycle
 
-1. **Hold:** `nix-holds add` in a PR, with the reason and the upstream link.
-2. **Release:** the release action (`uses: kleinbem-dev/nix-holds@<sha> # v0.2.0`,
+1. **Hold:** `nix-detour add` in a PR, with the reason and the upstream link.
+2. **Release:** the release action (`uses: kleinbem-dev/nix-detour@<sha> # v0.2.0`,
    after installing Nix) builds each release check from nixos-unstable and
    opens a PR removing the hold once it builds. Its `stale` output lists the holds
    older than 14 days, for your own alert. A consumer whose nixpkgs is older
@@ -139,11 +146,11 @@ kinds, use either or both:
 # Targets: a NixOS host's toplevel. On failure, the package to hold is found
 # in the error's trace, so packages reached any way count (services, config
 # files, plugins). One per round.
-nixHoldsTargets.x86_64-linux.myhost = inputs.nix-holds.lib.watch.target self.nixosConfigurations.myhost;
+nixDetourTargets.x86_64-linux.myhost = inputs.nix-detour.lib.watch.target self.nixosConfigurations.myhost;
 # Watched packages: each evaluated on its own, and built when no substituter
 # has it. lib.watch.nixos takes a host's system packages and its home-manager
 # users' home.packages.
-nixHoldsWatch.x86_64-linux = inputs.nix-holds.lib.watch.nixos self.nixosConfigurations.myhost;
+nixDetourWatch.x86_64-linux = inputs.nix-detour.lib.watch.nixos self.nixosConfigurations.myhost;
 # or: lib.watch.packages { inherit pkgs; packages = [ ... ]; }
 ```
 
@@ -152,7 +159,7 @@ evaluated, not built.
 
 ```yaml
 # in the workflow that opens or updates the lock PR, after installing Nix
-- uses: kleinbem-dev/nix-holds/update@<sha>
+- uses: kleinbem-dev/nix-detour/update@<sha>
   id: holds
   with:
     mode: commit          # report (the default) only reports
@@ -184,7 +191,7 @@ or a newer version, the entry goes and nixpkgs' package takes over.
 |---|---|
 | `pr` | the nixpkgs PR number |
 | `owner`, `repo` | where the PR's branch is (your fork) |
-| `rev`, `narHash` | the pinned commit (`nix-holds pr pin`) |
+| `rev`, `narHash` | the pinned commit (`nix-detour pr pin`) |
 | `attrs` | the packages to take from the PR (from `pkgs/by-name`) |
 | `scope` | optional: packages of the PR that `attrs` need but that stay unexported |
 | `modules` | optional: NixOS modules of the PR, `{ name = path in the PR; }` |
@@ -192,7 +199,7 @@ or a newer version, the entry goes and nixpkgs' package takes over.
 ```nix
 # outputs
 let
-  prs = inputs.nix-holds.lib.mkPrs { prs = ./nixpkgs-prs.json; };
+  prs = inputs.nix-detour.lib.mkPrs { prs = ./nixpkgs-prs.json; };
 in
 {
   overlays.default = prs.overlay;
@@ -205,29 +212,29 @@ in
 The packages of one entry see each other first, then your nixpkgs. The
 modules come without their `meta.doc`: the NixOS manual rejects chapters
 nixpkgs doesn't know, and the module's options are documented either way.
-`mkPrs` doesn't need flakes: `import "${nix-holds}/prs.nix" { inherit lib;
+`mkPrs` doesn't need flakes: `import "${nix-detour}/prs.nix" { inherit lib;
 prs = ./nixpkgs-prs.json; }` gives the same.
 
 ```sh
-nix run github:kleinbem-dev/nix-holds -- pr add mesh-llm --pr 571722 \
+nix run github:kleinbem-dev/nix-detour -- pr add mesh-llm --pr 571722 \
   --repo you/nixpkgs --attrs mesh-llm,skippy --rev <full sha> \
   --module mesh-llm=nixos/modules/services/misc/mesh-llm.nix
-nix run github:kleinbem-dev/nix-holds -- pr pin mesh-llm <newer full sha>
-nix run github:kleinbem-dev/nix-holds -- pr list
-nix run github:kleinbem-dev/nix-holds -- pr merged   # which entries can go
+nix run github:kleinbem-dev/nix-detour -- pr pin mesh-llm <newer full sha>
+nix run github:kleinbem-dev/nix-detour -- pr list
+nix run github:kleinbem-dev/nix-detour -- pr merged   # which entries can go
 ```
 
 Lifecycle:
 
-1. **Add** an entry with `nix-holds pr add ... --rev <sha>`, pinned to a
+1. **Add** an entry with `nix-detour pr add ... --rev <sha>`, pinned to a
    commit whose packages build (nixpkgs-review). An entry without a pin
    doesn't evaluate, so don't commit one.
 2. **Pin** a newer commit of the PR later, by hand or with the pin action,
    which evaluates the packages and opens the PR:
-   `uses: kleinbem-dev/nix-holds/pr-pin@<sha> # v0.2.0` with `token`, `name` and
+   `uses: kleinbem-dev/nix-detour/pr-pin@<sha> # v0.2.0` with `token`, `name` and
    `rev`. Lock updates never move a pin, so nothing new runs unless you
    pinned it.
-3. **Remove:** `uses: kleinbem-dev/nix-holds/pr-merged@<sha> # v0.2.0` with `token`,
+3. **Remove:** `uses: kleinbem-dev/nix-detour/pr-merged@<sha> # v0.2.0` with `token`,
    on a schedule, opens a PR removing each entry your flake's nixpkgs has
    caught up with. An entry with modules gets a draft: switch to nixpkgs'
    own module first, then mark it ready.

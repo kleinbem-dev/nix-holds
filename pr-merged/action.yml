@@ -1,4 +1,4 @@
-name: nix-holds pr merged
+name: nix-detour pr merged
 description: >-
   Opens a PR removing every entry of the PRs file whose packages the flake's
   nixpkgs has in the same or a newer version, so nixpkgs' packages take
@@ -52,11 +52,11 @@ runs:
 
         Draft: the NixOS module(s) $modules come from this entry too. Switch their users to nixpkgs' own module first, then mark this ready.
 
-        🤖 Opened by the nix-holds pr merged action." --draft "$PRS"
+        🤖 Opened by the nix-detour pr merged action." --draft "$PRS"
           else
             "$GITHUB_ACTION_PATH/../scripts/open-signed-pr.sh" "nixpkgs-merged/$name" "chore($name): use nixpkgs' packages" \
               "$body
 
-        🤖 Opened by the nix-holds pr merged action." "$PRS"
+        🤖 Opened by the nix-detour pr merged action." "$PRS"
           fi
         done

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# nix-holds pr: manage the PRs file of a flake (nixpkgs-prs.json).
+# nix-detour pr: manage the PRs file of a flake (nixpkgs-prs.json).
 set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: nix-holds pr <command> [options]
+Usage: nix-detour pr <command> [options]
 
   add NAME --pr NUMBER --repo OWNER/REPO --attrs a,b [--rev SHA]
            [--scope c,d] [--module NAME=PATH]...
@@ -31,7 +31,7 @@ EOF
 }
 
 die() {
-  echo "nix-holds pr: $*" >&2
+  echo "nix-detour pr: $*" >&2
   exit 1
 }
 
@@ -117,7 +117,7 @@ case "$command" in
     if [[ -n $rev ]]; then
       echo "added $name, pinned to $rev ($hash)"
     else
-      echo "added $name; pin it with: nix-holds pr pin $name SHA"
+      echo "added $name; pin it with: nix-detour pr pin $name SHA"
     fi
     ;;
   pin)

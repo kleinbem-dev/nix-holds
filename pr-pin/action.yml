@@ -1,4 +1,4 @@
-name: nix-holds pr pin
+name: nix-detour pr pin
 description: >-
   Pins an entry of the PRs file (packages from an open nixpkgs PR) to a
   commit, evaluates its packages and opens a PR with the pin. Run it after
@@ -47,4 +47,4 @@ runs:
         "$GITHUB_ACTION_PATH/../scripts/open-signed-pr.sh" "pin/$NAME" "chore($NAME): pin to ${REV:0:12}" \
           "Pins \`$NAME\` to $REV, the state of NixOS/nixpkgs#$pr to run.
 
-        🤖 Opened by the nix-holds pr pin action." "$PRS"
+        🤖 Opened by the nix-detour pr pin action." "$PRS"
