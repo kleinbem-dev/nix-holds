@@ -10,7 +10,7 @@
   files they read keep their names. GitHub doesn't redirect `uses:`, so
   workflows must change `kleinbem-dev/nix-holds` to `kleinbem-dev/nix-detour`.
 
-- Update action (`kleinbem-dev/nix-holds/update`): on a lock-update PR,
+- Update action (`kleinbem-dev/nix-detour/update`): on a lock-update PR,
   finds what the update broke and holds each package on the nixpkgs before
   the update, in the same PR (`mode: commit`) or as a report. It checks
   again after each round: what still fails held is reported, not held; a
