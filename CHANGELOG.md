@@ -2,11 +2,12 @@
 
 ## Unreleased
 
-- Update action (`kleinbem-dev/nix-holds/update`): on a lock-update PR, finds
-  the watched packages that fail (evaluated one by one, built when no
+- Update action (`kleinbem-dev/nix-holds/update`): on a lock-update PR,
+  finds the watched packages that fail (evaluated one by one, built when no
   substituter has them) and holds each on the nixpkgs before the update, in
   the same PR (`mode: commit`) or as a report. Packages that still fail when
-  held are reported, not held.
+  held are reported, not held. `directory` and `nix-args` cover a checkout
+  in a subfolder and flakes that need `--override-input`.
 - `lib.watch.nixos` and `lib.watch.packages`: the top-level packages a
   configuration uses, for the update action (`nixHoldsWatch.<system>`).
 
