@@ -17,6 +17,8 @@ Usage: nix-holds <command> [options]
   check [--flake REF] [--channel REF]
       Build what ends each hold (the flake's releaseChecks, with the holds
       its mkHolds reads) from the newest nixpkgs; say which holds can go.
+  pr ...
+      Packages from open nixpkgs PRs (see nix-holds pr --help).
 
 Options for every command:
   --file PATH    the holds file (default: held-packages.json)
@@ -29,6 +31,11 @@ die() {
   echo "nix-holds: $*" >&2
   exit 1
 }
+
+if [[ ${1:-} == pr ]]; then
+  shift
+  exec @prs@ "$@"
+fi
 
 file=held-packages.json lock=flake.lock input=nixpkgs
 from=previous reason="" link="" release_when="" tests="" flake=. channel=github:NixOS/nixpkgs/nixos-unstable
