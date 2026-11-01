@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Fixes: a held package can carry `patches` (URLs pinned by hash, or files
+  next to the holds file) and an `override` file, and `from = "current"`
+  fixes the package of your own nixpkgs instead of holding an older one.
+  A fix ends like a hold, once the unfixed package builds from
+  nixos-unstable. CLI: `nix-detour fix add NAME --patch … | --override …`
+  (and `--patch`, `--override`, `--from current` on `hold add`).
+
 ## 0.3.1 (2026-11-01)
 
 - Update action with `holds-repo`: the holds repository is cloned at the

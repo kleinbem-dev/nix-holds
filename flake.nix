@@ -46,6 +46,7 @@
           overlay = import ./overlay.nix {
             inherit nixpkgs-stable extraOverlays config;
             holds = entries;
+            root = if builtins.isAttrs holds then null else dirOf holds;
           };
 
           # The nixpkgs NixOS tests of the held packages, from a package set

@@ -8,6 +8,9 @@ once nixpkgs catches up:
   update stops until the package is fixed. The [update
   action](#holding-automatically-on-a-lock-update) adds holds by itself when
   a lock update breaks something.
+- **Fix:** instead of waiting, the current package runs with your
+  [patch or override](#fixing-instead-of-holding), until nixpkgs' own
+  package works again.
 - **Ahead:** a package that only exists on an open nixpkgs PR (often your
   own) runs from that PR, pinned, [before it
   lands](#packages-from-open-nixpkgs-prs).
@@ -30,7 +33,8 @@ An example of it in use:
 
 | Field | Meaning |
 |---|---|
-| `from` | `"stable"` (the nixpkgs-stable input, which keeps getting security fixes) or `{ rev, narHash }`, a pinned nixos-unstable commit, usually the last one you ran |
+| `from` | `"stable"` (the nixpkgs-stable input, which keeps getting security fixes), `{ rev, narHash }`, a pinned nixos-unstable commit, usually the last one you ran, or `"current"` (your own nixpkgs, for a fix) |
+| `patches`, `override` | optional: a fix on top, see [Fixing instead of holding](#fixing-instead-of-holding) |
 | `since` | when the hold started |
 | `releaseWhen` | optional: the nixpkgs attribute whose repair ends the hold (default: the package itself), e.g. the broken dependency of one of our own packages |
 | `reason`, `link` | why, and the upstream issue or PR that fixes it |
@@ -195,6 +199,33 @@ Once that merges and your lock moves to it, the update goes through. A hold
 the repository has by now but your lock doesn't yet is reported as "update
 the input", not proposed again.
 
+## Fixing instead of holding
+
+A hold runs an older version. When you know the fix (a patch from upstream,
+the source patch of someone's nixpkgs PR, a missing build input), run the
+current package with it instead:
+
+```sh
+nix run github:kleinbem-dev/nix-detour -- fix add qdrant \
+  --patch https://raw.githubusercontent.com/<owner>/nixpkgs/<sha>/pkgs/by-name/qd/qdrant/0001-disable-avx512vnni.patch \
+  --reason "rustc/LLVM intrinsic mismatch; workaround from NixOS/nixpkgs#553347" \
+  --link https://github.com/NixOS/nixpkgs/issues/553191
+```
+
+- `--patch` adds a patch to the package's own: a URL is pinned by its hash, a
+  file is relative to the holds file's directory. Repeat it for several.
+- `--override FILE` (relative to the holds file) for changes that aren't a
+  patch: the file holds `{ pkgs, package }: package.overrideAttrs (old: {
+  buildInputs = old.buildInputs ++ [ pkgs.zstd ]; })`. Don't refer to the
+  package itself through `pkgs`; use `package`.
+- `fix add` is `hold add --from current`; a fix can also go on a held
+  package (`hold add --from stable --patch …`).
+
+A fix ends like a hold: once the package, unfixed, builds from nixos-unstable,
+the hold-release action opens the PR that removes it, so you're back on
+nixpkgs' own package as soon as it works. Set `releaseWhen` when the fix waits
+on another attribute.
+
 ## Packages from open nixpkgs PRs
 
 When a package you need only exists on a nixpkgs PR (often your own), run
@@ -261,6 +292,6 @@ Both actions run after installing Nix, from a checkout of your repository.
 
 ## Not here
 
-Fixes that change a package (a patch, a skipped test) stay in the consumer
-that needs them. This repo only chooses which nixpkgs a package comes from:
-an older one, or a PR.
+Changes meant to stay (a package you maintain, a patch nixpkgs will never
+take) belong in your own overlay or package set. nix-detour's detours all
+end: each says what it waits for and goes away once nixpkgs has it.

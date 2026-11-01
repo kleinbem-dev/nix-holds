@@ -1,16 +1,22 @@
 #!/usr/bin/env bash
-# nix-detour: manage a flake's holds (held-packages.json) and PR packages
-# (nixpkgs-prs.json).
+# nix-detour: manage a flake's holds and fixes (held-packages.json) and PR
+# packages (nixpkgs-prs.json).
 set -euo pipefail
 
 usage() {
   cat <<'EOF'
 Usage: nix-detour hold <command> [options]
+       nix-detour fix add NAME --patch URL|FILE... | --override FILE ...
+           (the same as hold add with --from current: the current package, fixed)
 
-  add NAME --reason TEXT [--link URL] [--from previous|stable|REV]
-           [--release-when ATTR] [--tests a,b]
+  add NAME --reason TEXT [--link URL] [--from previous|stable|current|REV]
+           [--patch URL|FILE]... [--override FILE] [--release-when ATTR] [--tests a,b]
       Hold NAME. --from previous (the default) takes the nixpkgs your
       flake.lock had before its last change to that input, from git history.
+      --patch and --override fix the package on top: a patch URL is pinned
+      by its hash, a FILE is relative to the holds file's directory, and
+      --override FILE holds `{ pkgs, package }: <the fixed package>`.
+      Either way it ends once NAME, unfixed, builds from nixos-unstable.
   remove NAME
       Drop the hold of NAME.
   list
@@ -31,8 +37,13 @@ die() {
   exit 1
 }
 
+fix=false
 case "${1:-}" in
   hold) shift ;;
+  fix)
+    shift
+    fix=true
+    ;;
   pr)
     shift
     exec @prs@ "$@"
@@ -43,6 +54,7 @@ case "${1:-}" in
 Usage: nix-detour <hold|pr> <command> [options]
 
   hold ...   packages held back on an older nixpkgs (nix-detour hold --help)
+  fix ...    the current package with your patch or override (nix-detour hold --help)
   pr ...     packages from open nixpkgs PRs (nix-detour pr --help)
 EOF
     [[ -n "${1:-}" ]] || exit 1
@@ -53,7 +65,9 @@ esac
 
 file=held-packages.json lock=flake.lock input=nixpkgs
 from=previous reason="" link="" release_when="" tests="" flake=. channel=github:NixOS/nixpkgs/nixos-unstable
-args=()
+override=""
+args=() patches=()
+$fix && from=current
 # The value of option $1, or an error when it has none.
 need() {
   (($# >= 2)) || die "$1 needs a value"
@@ -68,6 +82,8 @@ while (($#)); do
     --link) need "$@"; link="$2"; shift 2 ;;
     --release-when) need "$@"; release_when="$2"; shift 2 ;;
     --tests) need "$@"; tests="$2"; shift 2 ;;
+    --patch) need "$@"; patches+=("$2"); shift 2 ;;
+    --override) need "$@"; override="$2"; shift 2 ;;
     --flake) need "$@"; flake="$2"; shift 2 ;;
     --channel) need "$@"; channel="$2"; shift 2 ;;
     -h | --help) usage; exit 0 ;;
@@ -126,8 +142,25 @@ case "$command" in
     name="${args[1]:-}"
     [[ -n $name ]] || die "add needs the name of the package"
     [[ -n $reason ]] || die "add needs --reason (why it is held)"
+    if $fix && ((${#patches[@]} == 0)) && [[ -z $override ]]; then
+      die "fix add needs --patch or --override"
+    fi
+    # The fix: URLs pinned by their hash, files checked next to the holds file.
+    dir=$(dirname "$file")
+    patches_json='[]'
+    for p in "${patches[@]}"; do
+      if [[ $p == http://* || $p == https://* ]]; then
+        h=$(nix store prefetch-file --json "$p" | jq -r .hash) || die "cannot fetch $p"
+        patches_json=$(jq --arg u "$p" --arg h "$h" '. + [{url: $u, hash: $h}]' <<<"$patches_json")
+      else
+        [[ -f $dir/$p ]] || die "$p is not a file next to $file"
+        patches_json=$(jq --arg p "$p" '. + [$p]' <<<"$patches_json")
+      fi
+    done
+    [[ -z $override || -f $dir/$override ]] || die "$override is not a file next to $file"
     case "$from" in
       stable) source='"stable"' ;;
+      current) source='"current"' ;;
       previous) source=$(previous_nixpkgs) ;;
       *)
         hash=$(nix flake prefetch --json "github:NixOS/nixpkgs/$from" | jq -r .hash) \
@@ -136,13 +169,20 @@ case "$command" in
         ;;
     esac
     holds | jq --arg n "$name" --argjson from "$source" --arg since "$(date -u +%F)" \
-      --arg reason "$reason" --arg link "$link" --arg rw "$release_when" --arg tests "$tests" '
+      --arg reason "$reason" --arg link "$link" --arg rw "$release_when" --arg tests "$tests" \
+      --argjson patches "$patches_json" --arg override "$override" '
       .[$n] = ({from: $from, since: $since}
+        + (if $patches == [] then {} else {patches: $patches} end)
+        + (if $override == "" then {} else {override: $override} end)
         + (if $rw == "" then {} else {releaseWhen: $rw} end)
         + {reason: $reason}
         + (if $link == "" then {} else {link: $link} end)
         + (if $tests == "" then {} else {tests: ($tests | split(","))} end))' | write_holds
-    echo "holding $name from $(jq -r --arg n "$name" '.[$n].from | if type == "string" then . else .rev end' "$file")"
+    if [[ $patches_json != '[]' || -n $override ]]; then
+      echo "fixing $name on $(jq -r --arg n "$name" '.[$n].from | if type == "string" then . else .rev end' "$file")"
+    else
+      echo "holding $name from $(jq -r --arg n "$name" '.[$n].from | if type == "string" then . else .rev end' "$file")"
+    fi
     ;;
   remove)
     name="${args[1]:-}"
@@ -152,7 +192,8 @@ case "$command" in
     ;;
   list)
     today=$(date -u +%s)
-    holds | jq -r 'to_entries[] | [.key, (.value.from | if type == "string" then . else .rev[0:12] end),
+    holds | jq -r 'to_entries[] | [.key, ((.value.from | if type == "string" then . else .rev[0:12] end)
+        + (if (.value.patches // []) != [] or .value.override then "+fix" else "" end)),
       (.value.since // ""), (.value.releaseWhen // "")] | join("\u001f")' |
       # \x1f, not a tab: read merges runs of whitespace, so an empty field
       # would shift the ones after it.

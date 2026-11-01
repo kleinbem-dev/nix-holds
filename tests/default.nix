@@ -90,6 +90,30 @@ let
     ];
   };
 
+  # Fixes: the current or a held package with a patch or an override, from a
+  # holds file whose relative paths resolve next to it.
+  fixes = mkHolds {
+    inherit nixpkgs-stable;
+    holds = ./fix/held.json;
+  };
+  fixedPkgs = import nixpkgs {
+    inherit system;
+    overlays = [ fixes.overlay ];
+  };
+  # The same as an attrset: relative paths have nothing to resolve against.
+  relativeWithoutFile = import nixpkgs {
+    inherit system;
+    overlays = [
+      (mkHolds {
+        inherit nixpkgs-stable;
+        holds.hello = {
+          from = "current";
+          patches = [ "hello.patch" ];
+        };
+      }).overlay
+    ];
+  };
+
   held = consumer { };
   heldUnfree = consumer { allowUnfree = true; };
 
@@ -234,6 +258,32 @@ let
         true
       ];
     };
+    testFixCurrentKeepsVersion = {
+      expr = fixedPkgs.hello.version;
+      expected = pkgs.hello.version;
+    };
+    testFixAddsPatch = {
+      expr = map baseNameOf (fixedPkgs.hello.patches or [ ]);
+      expected = map baseNameOf (pkgs.hello.patches or [ ]) ++ [ "hello.patch" ];
+    };
+    testFixOverrideOnHeld = {
+      expr = [
+        fixedPkgs.figlet.version
+        (fixedPkgs.figlet ? fixedWith)
+      ];
+      expected = [
+        stable.figlet.version
+        true
+      ];
+    };
+    testFixRelativeNeedsFile = {
+      expr = (builtins.tryEval (builtins.deepSeq relativeWithoutFile.hello.patches null)).success;
+      expected = false;
+    };
+    testFixReleaseCheckUnfixed = {
+      expr = (fixes.releaseChecks pkgs).hello.outPath;
+      expected = pkgs.hello.outPath;
+    };
     testPrModuleArgs = {
       expr = lib.functionArgs prs.nixosModules.fake;
       expected = {
@@ -289,6 +339,21 @@ in
         if nix-detour hold remove foo 2>/dev/null; then echo "removing a missing hold should fail" >&2; exit 1; fi
         if nix-detour hold add qux 2>/dev/null; then echo "add without --reason should fail" >&2; exit 1; fi
         if nix-detour hold add qux --reason 2>/dev/null; then echo "an option without a value should fail" >&2; exit 1; fi
+
+        # Fixes: a patch file next to the holds file, an override, the fix shorthand.
+        echo patch > f.patch
+        echo '{ pkgs, package }: package' > o.nix
+        nix-detour hold add qux --from current --patch f.patch --reason r > out.txt
+        grep -q '^fixing qux on current$' out.txt
+        test "$(jq -c .qux.patches held-packages.json)" = '["f.patch"]'
+        nix-detour fix add quux --override o.nix --reason r
+        test "$(jq -c '[.quux.from, .quux.override]' held-packages.json)" = '["current","o.nix"]'
+        nix-detour hold list > list.txt
+        grep -q '^quux  *current+fix ' list.txt
+        if nix-detour fix add nofix --reason r 2>/dev/null; then echo "fix add without a fix should fail" >&2; exit 1; fi
+        if nix-detour fix add missing --patch nope.patch --reason r 2>/dev/null; then echo "a missing patch file should fail" >&2; exit 1; fi
+        nix-detour hold remove qux
+        nix-detour hold remove quux
 
         # An invalid holds file stays as it is.
         echo '{ broken' > bad.json
