@@ -1,0 +1,79 @@
+name: nix-holds update
+description: >-
+  Run it on a lock-update PR: finds the packages the update broke (watched
+  packages one by one, targets through their error traces) and holds each on
+  the nixpkgs before the update, so the rest of the update goes through. A
+  package that still fails held is reported instead. Run it after installing
+  Nix, from a checkout of the PR.
+inputs:
+  token:
+    description: Token that commits to the PR branch (contents write); only needed with mode commit
+    default: ""
+  mode:
+    description: "commit: add the holds to the PR branch; report: only report them"
+    default: report
+  directory:
+    description: The repository checkout to work in
+    default: .
+  flake:
+    description: Flake with nixHoldsWatch.<system> and/or nixHoldsTargets.<system> (from lib.watch), relative to directory
+    default: .
+  nix-args:
+    description: Extra arguments for every nix eval and build of the flake, such as --override-input (split on spaces)
+    default: ""
+  holds-file:
+    description: The holds file the flake's mkHolds reads, relative to the repository root; without it in this repository, holds are reported unchecked
+    default: held-packages.json
+  input:
+    description: The nixpkgs input in flake.lock
+    default: nixpkgs
+  base:
+    description: The branch whose flake.lock has the nixpkgs before the update
+    default: main
+  branch:
+    description: "The PR branch to commit to (default: the PR's head branch)"
+    default: ""
+  build:
+    description: Build the watched packages no substituter has ("false" only evaluates)
+    default: "true"
+outputs:
+  held:
+    description: The packages held (mode commit) or to hold (mode report), separated by spaces
+    value: ${{ steps.hold.outputs.held }}
+  failed:
+    description: Packages that fail on the previous nixpkgs too, separated by spaces
+    value: ${{ steps.hold.outputs.failed }}
+  report:
+    description: A Markdown report of both
+    value: ${{ steps.hold.outputs.report }}
+runs:
+  using: composite
+  steps:
+    - name: Find what the update broke
+      shell: bash
+      working-directory: ${{ inputs.directory }}
+      env:
+        NIX_HOLDS_ARGS: ${{ inputs.nix-args }}
+        FLAKE: ${{ inputs.flake }}
+        BUILD: ${{ inputs.build }}
+      run: |
+        set -euo pipefail
+        args=()
+        [[ $BUILD == true ]] || args+=(--no-build)
+        "$GITHUB_ACTION_PATH/../scripts/update.sh" "$FLAKE" "${args[@]}" | tee "$RUNNER_TEMP/update.txt"
+
+    - name: Hold them on the previous nixpkgs
+      id: hold
+      shell: bash
+      working-directory: ${{ inputs.directory }}
+      env:
+        NIX_HOLDS_ARGS: ${{ inputs.nix-args }}
+        GH_TOKEN: ${{ inputs.token }}
+        MODE: ${{ inputs.mode }}
+        FLAKE: ${{ inputs.flake }}
+        HOLDS: ${{ inputs.holds-file }}
+        INPUT: ${{ inputs.input }}
+        BASE: ${{ inputs.base }}
+        BRANCH: ${{ inputs.branch || github.head_ref || github.ref_name }}
+        BUILD: ${{ inputs.build }}
+      run: '"$GITHUB_ACTION_PATH/../scripts/hold.sh" "$RUNNER_TEMP/update.txt"'

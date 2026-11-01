@@ -7,6 +7,7 @@
   nixpkgs-stable,
   mkHolds,
   mkPrs,
+  watch,
   nix-holds,
 }:
 let
@@ -67,6 +68,27 @@ let
   };
   prChecks = prs.checks pkgs;
   fakeModule = prs.nixosModules.fake { inherit lib; };
+
+  # The update action's watch list: top-level packages only, the same
+  # package as the attribute, and a broken one whose attribute is broken too.
+  brokenPkgs = pkgs.extend (
+    _: prev: {
+      figlet = prev.figlet.overrideAttrs { meta.broken = true; };
+    }
+  );
+  watched = watch.packages {
+    pkgs = brokenPkgs;
+    packages = [
+      brokenPkgs.hello
+      brokenPkgs.figlet
+      (brokenPkgs.writeText "not-top-level" "x")
+      (brokenPkgs.hello.overrideAttrs {
+        pname = "hello";
+        version = "0-other";
+      })
+      brokenPkgs.python3Packages.six
+    ];
+  };
 
   held = consumer { };
   heldUnfree = consumer { allowUnfree = true; };
@@ -168,6 +190,49 @@ let
           }).nixosModules
         ).success;
       expected = false;
+    };
+    testWatchNames = {
+      expr = builtins.attrNames watched;
+      expected = [
+        "figlet"
+        "hello"
+      ];
+    };
+    testWatchBrokenStaysBroken = {
+      expr = (builtins.tryEval watched.figlet.drvPath).success;
+      expected = false;
+    };
+    testWatchNixos = {
+      expr = builtins.attrNames (
+        watch.nixos {
+          pkgs = brokenPkgs;
+          config = {
+            environment.systemPackages = [ brokenPkgs.hello ];
+            home-manager.users.u.home.packages = [ brokenPkgs.figlet ];
+          };
+        }
+      );
+      expected = [
+        "figlet"
+        "hello"
+      ];
+    };
+    testWatchTarget = {
+      expr =
+        let
+          t = watch.target {
+            pkgs = brokenPkgs;
+            config.system.build.toplevel = brokenPkgs.hello;
+          };
+        in
+        [
+          (t.pkgs.figlet.meta.broken)
+          (t.target.outPath == brokenPkgs.hello.outPath)
+        ];
+      expected = [
+        true
+        true
+      ];
     };
     testPrModuleArgs = {
       expr = lib.functionArgs prs.nixosModules.fake;

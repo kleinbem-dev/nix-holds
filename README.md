@@ -7,9 +7,10 @@ works, and everything else moves on. Without this, the whole lock update
 stops until the package is fixed. Each hold says why and where the fix is,
 and goes away once the package builds from nixos-unstable again.
 
-It also works the other way round: [packages from open nixpkgs
-PRs](#packages-from-open-nixpkgs-prs) run before the PR lands, and go once
-nixpkgs has them.
+Holds can be added [automatically on a lock
+update](#holding-automatically-on-a-lock-update). It also works the other
+way round: [packages from open nixpkgs PRs](#packages-from-open-nixpkgs-prs)
+run before the PR lands, and go once nixpkgs has them.
 
 An example of it in use:
 [kleinbem/nix-holds-fleet](https://github.com/kleinbem/nix-holds-fleet).
@@ -120,6 +121,52 @@ holds few and short.
 Don't hold packages the standard environment is built from (on darwin, jq
 is one): the darwin stdenv checks that its bootstrap tools come from one
 compiler, and evaluation fails.
+
+## Holding automatically on a lock update
+
+The update action runs on your lock-update PR (from update-flake-lock,
+Renovate or your own workflow). It finds what the update broke and holds
+each package on the nixpkgs from before the update, in the same PR. Then it
+checks again: a package that still fails held is reported instead (an error
+a hold can't fix), and a failure that shows up only now is held in the next
+round.
+
+Tell it what you use, from package sets with your overlays and holds. Two
+kinds, use either or both:
+
+```nix
+# outputs
+# Targets: a NixOS host's toplevel. On failure, the package to hold is found
+# in the error's trace, so packages reached any way count (services, config
+# files, plugins). One per round.
+nixHoldsTargets.x86_64-linux.myhost = inputs.nix-holds.lib.watch.target self.nixosConfigurations.myhost;
+# Watched packages: each evaluated on its own, and built when no substituter
+# has it. lib.watch.nixos takes a host's system packages and its home-manager
+# users' home.packages.
+nixHoldsWatch.x86_64-linux = inputs.nix-holds.lib.watch.nixos self.nixosConfigurations.myhost;
+# or: lib.watch.packages { inherit pkgs; packages = [ ... ]; }
+```
+
+Only top-level packages can be held, so only those are found. Targets are
+evaluated, not built.
+
+```yaml
+# in the workflow that opens or updates the lock PR, after installing Nix
+- uses: kleinbem-dev/nix-holds/update@<sha>
+  id: holds
+  with:
+    mode: commit          # report (the default) only reports
+    token: ${{ secrets.TOKEN }}   # contents write, for the commit
+```
+
+The holds go to the PR branch as one signed commit; the release action
+removes them again once nixos-unstable has the fix. `held`, `failed` and a
+Markdown `report` are outputs, for a PR comment or an issue. `build: false`
+only evaluates (for big closures such as CUDA, where substituters decide);
+`directory` and `nix-args` cover a checkout in a subfolder and flakes that
+need `--override-input`. Without the holds file in the repository (holds
+kept in another flake), the action can't check its holds and reports the
+first round only.
 
 ## Packages from open nixpkgs PRs
 

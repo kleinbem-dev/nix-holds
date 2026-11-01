@@ -82,6 +82,10 @@
       #   prs: its nixpkgs-prs.json (a path) or the same as an attrset
       lib.mkPrs = { prs }: import ./prs.nix { inherit lib prs; };
 
+      # What the update action checks (see watch.nix): lib.watch.nixos
+      # nixosSystem, or lib.watch.packages { pkgs, packages }.
+      lib.watch = import ./watch.nix { inherit lib; };
+
       # The CLI: add, remove, list and check holds, and the same for PR
       # packages (`nix-holds pr`). Nix itself comes from the user's PATH.
       packages = forAllSystems (pkgs: {
@@ -125,6 +129,7 @@
           inherit pkgs nixpkgs nixpkgs-stable;
           inherit (self.lib) mkHolds;
           mkPrs = args: import ./prs.nix ({ inherit lib; } // args);
+          inherit (self.lib) watch;
           inherit (self.packages.${pkgs.stdenv.hostPlatform.system}) nix-holds;
         }
       );
