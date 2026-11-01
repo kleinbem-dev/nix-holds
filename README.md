@@ -188,9 +188,12 @@ Holds kept in another repository (one list shared by several flakes):
     holds-token: ${{ secrets.TOKEN }}   # contents + PR write there
 ```
 
-The action clones that repository, holds there, checks through
+The action clones that repository at the revision your lock has for that
+input (the one the update was validated with), holds there, checks through
 `--override-input` with the edited copy, and in commit mode opens a PR in it.
-Once that merges and your lock moves to it, the update goes through.
+Once that merges and your lock moves to it, the update goes through. A hold
+the repository has by now but your lock doesn't yet is reported as "update
+the input", not proposed again.
 
 ## Packages from open nixpkgs PRs
 

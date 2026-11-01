@@ -95,6 +95,27 @@ for n in 1 2 3 4 5 6; do
 done
 mapfile -t unattributed < <(awk '$1 == "unattributed" {print $2}' "$round" | sort -u)
 
+# With HOLDS_REPO, the clone is at the revision the lock has. A hold that the
+# holds repository has by now needs a lock update of HOLDS_INPUT, not a new
+# hold. A failed read stops here: committing over a file we couldn't read
+# would drop its holds.
+ahead=()
+if $checked && [[ -n $holds_repo ]] && ((${#held[@]})); then
+  if [[ -d $holds_repo ]]; then
+    current=$(git -C "$holds_repo" show "HEAD:$holds_file")
+  else
+    current=$(GH_TOKEN="${HOLDS_TOKEN:-${GH_TOKEN:-}}" gh api "repos/$holds_repo/contents/$holds_file" \
+      -H "Accept: application/vnd.github.raw")
+  fi
+  jq -e 'type == "object"' <<<"$current" >/dev/null || { echo "$holds_repo: $holds_file is not a JSON object" >&2; exit 1; }
+  mapfile -t ahead < <(for name in "${held[@]}"; do
+    if jq -e --arg n "$name" 'has($n)' <<<"$current" >/dev/null; then echo "$name"; fi
+  done)
+  if ((${#ahead[@]})); then
+    mapfile -t held < <(printf '%s\n' "${held[@]}" | grep -vxF -f <(printf '%s\n' "${ahead[@]}") || true)
+  fi
+fi
+
 
 line() {
   echo "- \`$1\`: $(reason "$1")"
@@ -120,6 +141,12 @@ line() {
     for name in "${unchecked[@]}"; do line "$name"; done
     echo
   fi
+  if ((${#ahead[@]})); then
+    echo "Held in $holds_repo already, but your lock has an older revision of it: update the $HOLDS_INPUT input:"
+    echo
+    for name in "${ahead[@]}"; do line "$name"; done
+    echo
+  fi
   if ((${#failed[@]})); then
     echo "Still fail when held (on nixpkgs ${previous:0:12}, or held already), so a hold doesn't help:"
     echo
@@ -134,7 +161,7 @@ line() {
     done
     echo
   fi
-  ((${#held[@]} + ${#unchecked[@]} + ${#failed[@]} + ${#unattributed[@]})) || echo "Nothing fails."
+  ((${#held[@]} + ${#ahead[@]} + ${#unchecked[@]} + ${#failed[@]} + ${#unattributed[@]})) || echo "Nothing fails."
 } >"$RUNNER_TEMP/report.md"
 cat "$RUNNER_TEMP/report.md" >>"$GITHUB_STEP_SUMMARY"
 
@@ -143,15 +170,6 @@ if $checked; then
     if [[ -n $holds_repo ]]; then
       # Only the new holds, on the holds file as it is now: changes merged
       # there during the checks stay.
-      # A failed read stops here: committing over a file we couldn't read
-      # would drop its holds.
-      if [[ -d $holds_repo ]]; then
-        current=$(git -C "$holds_repo" show "HEAD:$holds_file")
-      else
-        current=$(GH_TOKEN="${HOLDS_TOKEN:-${GH_TOKEN:-}}" gh api "repos/$holds_repo/contents/$holds_file" \
-          -H "Accept: application/vnd.github.raw")
-      fi
-      jq -e 'type == "object"' <<<"$current" >/dev/null || { echo "$holds_repo: $holds_file is not a JSON object" >&2; exit 1; }
       jq --indent 2 --argjson current "$current" \
         '$current + with_entries(select(.key | IN($ARGS.positional[]))) | to_entries | sort_by(.key) | from_entries' \
         "$HOLDS" --args "${held[@]}" </dev/null >"$HOLDS.new"
