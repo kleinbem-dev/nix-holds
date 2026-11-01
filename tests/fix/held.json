@@ -1,0 +1,12 @@
+{
+  "hello": {
+    "from": "current",
+    "patches": [ "hello.patch" ],
+    "reason": "test"
+  },
+  "figlet": {
+    "from": "stable",
+    "override": "figlet.nix",
+    "reason": "test"
+  }
+}
