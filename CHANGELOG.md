@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Update action: when the base branch's flake.lock can't be read (no git
+  checkout, unknown input), it says so instead of stopping with exit 128.
+
 ## 0.3.0 (2026-11-01)
 
 Renamed from nix-holds: single packages take a detour from your nixpkgs,
