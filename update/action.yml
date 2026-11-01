@@ -70,6 +70,7 @@ runs:
         HOLDS_REPO: ${{ inputs.holds-repo }}
         HOLDS_INPUT: ${{ inputs.holds-input }}
         HOLDS_TOKEN: ${{ inputs.holds-token }}
+        FLAKE: ${{ inputs.flake }}
       run: '"$GITHUB_ACTION_PATH/../scripts/clone-holds.sh"'
 
     - name: Find what the update broke

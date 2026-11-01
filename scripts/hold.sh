@@ -140,12 +140,15 @@ if $checked; then
     if [[ -n $holds_repo ]]; then
       # Only the new holds, on the holds file as it is now: changes merged
       # there during the checks stay.
+      # A failed read stops here: committing over a file we couldn't read
+      # would drop its holds.
       if [[ -d $holds_repo ]]; then
-        current=$(git -C "$holds_repo" show "HEAD:$holds_file" 2>/dev/null || echo '{}')
+        current=$(git -C "$holds_repo" show "HEAD:$holds_file")
       else
         current=$(GH_TOKEN="${HOLDS_TOKEN:-${GH_TOKEN:-}}" gh api "repos/$holds_repo/contents/$holds_file" \
-          -H "Accept: application/vnd.github.raw" 2>/dev/null || echo '{}')
+          -H "Accept: application/vnd.github.raw")
       fi
+      jq -e 'type == "object"' <<<"$current" >/dev/null || { echo "$holds_repo: $holds_file is not a JSON object" >&2; exit 1; }
       jq --indent 2 --argjson current "$current" \
         '$current + with_entries(select(.key | IN($ARGS.positional[]))) | to_entries | sort_by(.key) | from_entries' \
         "$HOLDS" --args "${held[@]}" </dev/null >"$HOLDS.new"

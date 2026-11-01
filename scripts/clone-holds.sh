@@ -9,6 +9,13 @@
 set -euo pipefail
 
 [[ -n ${HOLDS_INPUT:-} ]] || { echo "holds-repo needs holds-input (its flake input here)" >&2; exit 1; }
+# A misspelt input would leave every check on the locked holds (some Nix
+# versions only warn about an unknown --override-input).
+lock="${FLAKE:-.}/flake.lock"
+if [[ -f $lock ]] && ! jq -e --arg i "$HOLDS_INPUT" '.nodes.root.inputs | has($i)' "$lock" >/dev/null; then
+  echo "holds-input $HOLDS_INPUT is not an input of ${FLAKE:-.} (see its flake.lock)" >&2
+  exit 1
+fi
 clone="$RUNNER_TEMP/holds-repo"
 rm -rf "$clone"
 if [[ -d $HOLDS_REPO ]]; then
