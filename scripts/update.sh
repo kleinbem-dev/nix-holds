@@ -4,10 +4,10 @@
 # After a lock update: finds the packages FLAKE uses that fail, so they can
 # be held. Two ways, each used when the flake has the output:
 #
-# - nixHoldsWatch.<system> (lib.watch.packages/nixos): each package is
+# - nixDetourWatch.<system> (lib.watch.packages/nixos): each package is
 #   evaluated on its own; those that evaluate but that no substituter has
 #   are built (unless --no-build).
-# - nixHoldsTargets.<system>.<name> = { target; pkgs; } (lib.watch.target):
+# - nixDetourTargets.<system>.<name> = { target; pkgs; } (lib.watch.target):
 #   each target (a host's toplevel) is evaluated; on failure, the package to
 #   hold is the innermost derivation in the error's trace that is a
 #   top-level attribute of pkgs and fails on its own there. One per target
@@ -16,8 +16,8 @@
 # Prints "broken <name> <reason>" per package to hold, "unattributed
 # <target> <reason>" for a target that fails without one, and "ok <system> <count>"
 # for the watched packages that pass. --only limits the watched packages to
-# those names. NIX_HOLDS_ARGS: extra arguments for every nix eval and build
-# (such as --override-input), split on spaces. NIX_HOLDS_SYSTEMS: the
+# those names. NIX_DETOUR_ARGS: extra arguments for every nix eval and build
+# (such as --override-input), split on spaces. NIX_DETOUR_SYSTEMS: the
 # systems to check, split on spaces (default: this one); evaluation works for
 # any system, builds only for this one.
 set -uo pipefail
@@ -33,11 +33,11 @@ while (($#)); do
   esac
 done
 
-read -ra extra <<<"${NIX_HOLDS_ARGS:-}"
+read -ra extra <<<"${NIX_DETOUR_ARGS:-}"
 tmp=$(mktemp -d) || exit 1
 trap 'rm -rf "$tmp"' EXIT
 native=$(nix eval --raw --impure --expr builtins.currentSystem)
-read -ra systems <<<"${NIX_HOLDS_SYSTEMS:-}"
+read -ra systems <<<"${NIX_DETOUR_SYSTEMS:-}"
 ((${#systems[@]})) || systems=("$native")
 # shellcheck disable=SC2016  # a Nix expression
 filter='ws: let only = builtins.filter (n: builtins.isString n && n != "") (builtins.split "," "'"$only"'"); in
@@ -70,8 +70,8 @@ has_output() {
 check() {
   local system="$1" results broken watch targets target err chain name why list
   results='{}' broken=()
-  watch="$flake#nixHoldsWatch.$system"
-  if has_output nixHoldsWatch; then
+  watch="$flake#nixDetourWatch.$system"
+  if has_output nixDetourWatch; then
     # name -> { drv, out } or null when it doesn't evaluate. tryEval catches
     # throws (broken, unfree, insecure, removed aliases); other errors fail the
     # whole evaluation, and then each name is evaluated on its own.
@@ -82,7 +82,7 @@ check() {
       # A watch list that can't even be listed (say, a host's package list
       # names a removed attribute) is reported; the targets still run.
       names=$(nix eval "${extra[@]}" --json "$watch" --apply "ws: builtins.attrNames (($filter) ws)" 2>"$tmp/err") || {
-        echo "unattributed nixHoldsWatch.$system $(innermost <"$tmp/err")"
+        echo "unattributed nixDetourWatch.$system $(innermost <"$tmp/err")"
         names='[]'
       }
       results='{}'
@@ -122,18 +122,18 @@ check() {
     fi
   fi
 
-  if [[ -z $only ]] && has_output nixHoldsTargets; then
-    targets=$(nix eval "${extra[@]}" --json "$flake#nixHoldsTargets.$system" --apply builtins.attrNames 2>"$tmp/err") || {
-      echo "unattributed nixHoldsTargets.$system $(innermost <"$tmp/err")"
+  if [[ -z $only ]] && has_output nixDetourTargets; then
+    targets=$(nix eval "${extra[@]}" --json "$flake#nixDetourTargets.$system" --apply builtins.attrNames 2>"$tmp/err") || {
+      echo "unattributed nixDetourTargets.$system $(innermost <"$tmp/err")"
       targets='[]'
     }
     mapfile -t list < <(jq -r '.[]' <<<"$targets")
     for target in "${list[@]}"; do
-      err=$(nix eval "${extra[@]}" --show-trace --raw "$flake#nixHoldsTargets.$system.\"$target\".target.drvPath" 2>&1 >/dev/null) && continue
+      err=$(nix eval "${extra[@]}" --show-trace --raw "$flake#nixDetourTargets.$system.\"$target\".target.drvPath" 2>&1 >/dev/null) && continue
       # The derivations in the trace, innermost first.
       chain=$(grep -oE "while evaluating derivation '[^']+'" <<<"$err" | cut -d"'" -f2 | tac | jq -Rsc 'split("\n") | map(select(. != ""))')
       # shellcheck disable=SC2016  # a Nix expression
-      name=$(nix eval "${extra[@]}" --raw "$flake#nixHoldsTargets.$system.\"$target\".pkgs" --apply "pkgs: let
+      name=$(nix eval "${extra[@]}" --raw "$flake#nixDetourTargets.$system.\"$target\".pkgs" --apply "pkgs: let
           names = map (d: (builtins.parseDrvName d).name) (builtins.fromJSON ''$chain'');
           held = builtins.filter (n: pkgs ? \${n} && !(builtins.tryEval pkgs.\${n}.drvPath).success) names;
         in if held == [ ] then \"\" else builtins.head held" 2>/dev/null)

@@ -8,7 +8,7 @@
   mkHolds,
   mkPrs,
   watch,
-  nix-holds,
+  nix-detour,
 }:
 let
   inherit (pkgs) lib;
@@ -245,10 +245,10 @@ in
 {
   # The CLI on a git repo whose flake.lock moved nixpkgs from rev a to b.
   cli =
-    pkgs.runCommand "nix-holds-cli-tests"
+    pkgs.runCommand "nix-detour-cli-tests"
       {
         nativeBuildInputs = [
-          nix-holds
+          nix-detour
           pkgs.git
           pkgs.jq
         ];
@@ -265,70 +265,70 @@ in
         lock b
 
         # Uncommitted update: the committed lock is the previous one.
-        nix-holds add foo --reason "broken in b" --link https://example.org/1
+        nix-detour add foo --reason "broken in b" --link https://example.org/1
         test "$(jq -c .foo.from held-packages.json)" = '{"rev":"a","narHash":"sha256-a"}'
         test "$(jq -r .foo.link held-packages.json)" = https://example.org/1
 
         # Committed update: found in the history.
         git add flake.lock; git commit -qm b
-        nix-holds add bar --reason r --release-when python3Packages.bar --tests t1,t2
+        nix-detour add bar --reason r --release-when python3Packages.bar --tests t1,t2
         test "$(jq -r .bar.from.rev held-packages.json)" = a
         test "$(jq -r .bar.releaseWhen held-packages.json)" = python3Packages.bar
         test "$(jq -c .bar.tests held-packages.json)" = '["t1","t2"]'
 
-        nix-holds add baz --from stable --reason r
+        nix-detour add baz --from stable --reason r
         test "$(jq -r .baz.from held-packages.json)" = stable
         test "$(jq -r 'keys | join(",")' held-packages.json)" = bar,baz,foo
 
-        nix-holds list | grep -q '^foo  *a  '
+        nix-detour list | grep -q '^foo  *a  '
         jq '.nodate = {from: "stable", reason: "r", releaseWhen: "python3Packages.x"}' held-packages.json > h && mv h held-packages.json
-        nix-holds list | grep -q '^nodate  *stable  *no date  until python3Packages.x builds$'
-        nix-holds remove nodate
-        nix-holds remove foo
+        nix-detour list | grep -q '^nodate  *stable  *no date  until python3Packages.x builds$'
+        nix-detour remove nodate
+        nix-detour remove foo
         test "$(jq -r 'keys | join(",")' held-packages.json)" = bar,baz
-        if nix-holds remove foo 2>/dev/null; then echo "removing a missing hold should fail" >&2; exit 1; fi
-        if nix-holds add qux 2>/dev/null; then echo "add without --reason should fail" >&2; exit 1; fi
-        if nix-holds add qux --reason 2>/dev/null; then echo "an option without a value should fail" >&2; exit 1; fi
+        if nix-detour remove foo 2>/dev/null; then echo "removing a missing hold should fail" >&2; exit 1; fi
+        if nix-detour add qux 2>/dev/null; then echo "add without --reason should fail" >&2; exit 1; fi
+        if nix-detour add qux --reason 2>/dev/null; then echo "an option without a value should fail" >&2; exit 1; fi
 
         # An invalid holds file stays as it is.
         echo '{ broken' > bad.json
-        if nix-holds add qux --reason r --from stable --file bad.json 2>/dev/null; then echo "add to an invalid file should fail" >&2; exit 1; fi
+        if nix-detour add qux --reason r --from stable --file bad.json 2>/dev/null; then echo "add to an invalid file should fail" >&2; exit 1; fi
         test "$(cat bad.json)" = '{ broken'
-        if nix-holds remove bar --file bad.json 2>/dev/null; then echo "remove from an invalid file should fail" >&2; exit 1; fi
+        if nix-detour remove bar --file bad.json 2>/dev/null; then echo "remove from an invalid file should fail" >&2; exit 1; fi
         test "$(cat bad.json)" = '{ broken'
         touch $out
       '';
 
   # The PR CLI, without the commands that fetch (pin) or evaluate a flake.
   pr-cli =
-    pkgs.runCommand "nix-holds-pr-cli-tests"
+    pkgs.runCommand "nix-detour-pr-cli-tests"
       {
         nativeBuildInputs = [
-          nix-holds
+          nix-detour
           pkgs.jq
         ];
       }
       ''
         set -euo pipefail
-        nix-holds pr add mesh --pr 571722 --repo someone/nixpkgs --attrs mesh-llm,skippy \
+        nix-detour pr add mesh --pr 571722 --repo someone/nixpkgs --attrs mesh-llm,skippy \
           --scope skippy-runtime --module mesh-llm=nixos/modules/services/misc/mesh-llm.nix
         test "$(jq -c .mesh nixpkgs-prs.json)" = '{"pr":571722,"owner":"someone","repo":"nixpkgs","rev":"","narHash":"","attrs":["mesh-llm","skippy"],"scope":["skippy-runtime"],"modules":{"mesh-llm":"nixos/modules/services/misc/mesh-llm.nix"}}'
-        nix-holds pr add berd --pr 2 --repo someone/nixpkgs --attrs berd
+        nix-detour pr add berd --pr 2 --repo someone/nixpkgs --attrs berd
         test "$(jq -r 'keys | join(",")' nixpkgs-prs.json)" = berd,mesh
         test "$(jq -c .berd nixpkgs-prs.json)" = '{"pr":2,"owner":"someone","repo":"nixpkgs","rev":"","narHash":"","attrs":["berd"]}'
-        nix-holds pr list | grep -q '^mesh  *#571722  *not pinned  *mesh-llm,skippy$'
-        if nix-holds pr pin berd abc 2>/dev/null; then echo "pin with a short sha should fail" >&2; exit 1; fi
-        if nix-holds pr pin nope 0000000000000000000000000000000000000000 2>/dev/null; then echo "pin of a missing entry should fail" >&2; exit 1; fi
-        if nix-holds pr add x --pr 3 --attrs x 2>/dev/null; then echo "add without --repo should fail" >&2; exit 1; fi
-        if nix-holds pr add x --pr 3 --repo a/b --attrs x --module bad 2>/dev/null; then echo "a module without a path should fail" >&2; exit 1; fi
-        if nix-holds pr add berd --pr 2 --repo other/nixpkgs --attrs berd 2>/dev/null; then echo "adding an existing entry should fail" >&2; exit 1; fi
+        nix-detour pr list | grep -q '^mesh  *#571722  *not pinned  *mesh-llm,skippy$'
+        if nix-detour pr pin berd abc 2>/dev/null; then echo "pin with a short sha should fail" >&2; exit 1; fi
+        if nix-detour pr pin nope 0000000000000000000000000000000000000000 2>/dev/null; then echo "pin of a missing entry should fail" >&2; exit 1; fi
+        if nix-detour pr add x --pr 3 --attrs x 2>/dev/null; then echo "add without --repo should fail" >&2; exit 1; fi
+        if nix-detour pr add x --pr 3 --repo a/b --attrs x --module bad 2>/dev/null; then echo "a module without a path should fail" >&2; exit 1; fi
+        if nix-detour pr add berd --pr 2 --repo other/nixpkgs --attrs berd 2>/dev/null; then echo "adding an existing entry should fail" >&2; exit 1; fi
         test "$(jq -r .berd.owner nixpkgs-prs.json)" = someone
         # A --rev that can't be pinned adds nothing.
-        if nix-holds pr add x --pr 3 --repo a/b --attrs x --rev abc 2>/dev/null; then echo "add with a short --rev should fail" >&2; exit 1; fi
+        if nix-detour pr add x --pr 3 --repo a/b --attrs x --rev abc 2>/dev/null; then echo "add with a short --rev should fail" >&2; exit 1; fi
         test "$(jq -r 'has("x")' nixpkgs-prs.json)" = false
-        nix-holds pr remove berd
+        nix-detour pr remove berd
         test "$(jq -r 'keys | join(",")' nixpkgs-prs.json)" = mesh
-        if nix-holds pr remove berd 2>/dev/null; then echo "removing a missing entry should fail" >&2; exit 1; fi
+        if nix-detour pr remove berd 2>/dev/null; then echo "removing a missing entry should fail" >&2; exit 1; fi
         touch $out
       '';
 

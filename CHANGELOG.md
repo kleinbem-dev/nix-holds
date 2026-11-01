@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Renamed from nix-holds to nix-detour: the repository
+  (`kleinbem-dev/nix-detour`; the old URLs redirect), the CLI (`nix-detour`),
+  the actions' names and the update action's outputs `nixDetourWatch` and
+  `nixDetourTargets` (were `nixHoldsWatch`, `nixHoldsTargets`). `mkHolds`,
+  `mkPrs` and the files they read keep their names.
+
 - Update action (`kleinbem-dev/nix-holds/update`): on a lock-update PR,
   finds what the update broke and holds each package on the nixpkgs before
   the update, in the same PR (`mode: commit`) or as a report. It checks

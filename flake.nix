@@ -1,5 +1,5 @@
 {
-  description = "Hold packages back from nixos-unstable while they're broken there, and run packages from open nixpkgs PRs until they land";
+  description = "Single packages take a detour from your nixpkgs (held back while broken, or ahead from an open nixpkgs PR) until nixpkgs catches up";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -87,13 +87,13 @@
       lib.watch = import ./watch.nix { inherit lib; };
 
       # The CLI: add, remove, list and check holds, and the same for PR
-      # packages (`nix-holds pr`). Nix itself comes from the user's PATH.
+      # packages (`nix-detour pr`). Nix itself comes from the user's PATH.
       packages = forAllSystems (pkgs: {
-        default = self.packages.${pkgs.stdenv.hostPlatform.system}.nix-holds;
-        nix-holds =
+        default = self.packages.${pkgs.stdenv.hostPlatform.system}.nix-detour;
+        nix-detour =
           let
             releaseCheck = pkgs.writeShellApplication {
-              name = "nix-holds-release-check";
+              name = "nix-detour-release-check";
               runtimeInputs = [
                 pkgs.coreutils
                 pkgs.jq
@@ -101,7 +101,7 @@
               text = builtins.readFile ./scripts/release-check.sh;
             };
             prs = pkgs.writeShellApplication {
-              name = "nix-holds-pr";
+              name = "nix-detour-pr";
               runtimeInputs = [
                 pkgs.coreutils
                 pkgs.jq
@@ -110,7 +110,7 @@
             };
           in
           pkgs.writeShellApplication {
-            name = "nix-holds";
+            name = "nix-detour";
             runtimeInputs = [
               pkgs.coreutils
               pkgs.git
@@ -118,7 +118,7 @@
             ];
             text =
               builtins.replaceStrings [ "@releaseCheck@" "@prs@" ] [ (lib.getExe releaseCheck) (lib.getExe prs) ]
-                (builtins.readFile ./scripts/nix-holds.sh);
+                (builtins.readFile ./scripts/nix-detour.sh);
           };
       });
 
@@ -130,7 +130,7 @@
           inherit (self.lib) mkHolds;
           mkPrs = args: import ./prs.nix ({ inherit lib; } // args);
           inherit (self.lib) watch;
-          inherit (self.packages.${pkgs.stdenv.hostPlatform.system}) nix-holds;
+          inherit (self.packages.${pkgs.stdenv.hostPlatform.system}) nix-detour;
         }
       );
 

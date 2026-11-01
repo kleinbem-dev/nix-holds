@@ -10,7 +10,7 @@
 # unchecked.
 #
 # Environment: FLAKE, HOLDS, INPUT, BASE, MODE (commit|report), BRANCH,
-# BUILD (true|false), NIX_HOLDS_ARGS, GH_TOKEN; RUNNER_TEMP, GITHUB_OUTPUT,
+# BUILD (true|false), NIX_DETOUR_ARGS, GH_TOKEN; RUNNER_TEMP, GITHUB_OUTPUT,
 # GITHUB_STEP_SUMMARY and GITHUB_REPOSITORY as on GitHub.
 set -euo pipefail
 
@@ -135,7 +135,7 @@ cat "$RUNNER_TEMP/report.md" >>"$GITHUB_STEP_SUMMARY"
   # In report mode, "held" means "to hold".
   if [[ $MODE == commit ]]; then echo "held=${held[*]}"; else echo "held=$(echo "${held[*]} ${unchecked[*]}" | xargs)"; fi
   echo "failed=$(echo "${failed[*]} ${unattributed[*]}" | xargs)"
-  echo "report<<NIX_HOLDS_REPORT"
+  echo "report<<NIX_DETOUR_REPORT"
   cat "$RUNNER_TEMP/report.md"
-  echo "NIX_HOLDS_REPORT"
+  echo "NIX_DETOUR_REPORT"
 } >>"$GITHUB_OUTPUT"

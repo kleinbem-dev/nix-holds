@@ -44,8 +44,8 @@ let
 
   packages = pkgs: lib.concatMapAttrs (_: packagesOf pkgs) entries;
 in
-assert lib.assertMsg (lib.allUnique allAttrs) "nix-holds prs: an attribute is in two entries";
-assert lib.assertMsg (lib.allUnique allModules) "nix-holds prs: a module name is in two entries";
+assert lib.assertMsg (lib.allUnique allAttrs) "nix-detour prs: an attribute is in two entries";
+assert lib.assertMsg (lib.allUnique allModules) "nix-detour prs: a module name is in two entries";
 {
   inherit entries packages;
 
